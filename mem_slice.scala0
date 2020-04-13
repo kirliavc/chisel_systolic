@@ -5,18 +5,18 @@ import chisel3.iotesters.{PeekPokeTester, Driver}
 import scala.collection.mutable.ArrayBuffer
 import scala.math.log10
 import chisel3.util._
-// class mem_dp_slice(data_width: Int, addr_width: Int, depth: Int, pipeline: Int) extends Blackbox{
-//   val io = IO(new Bundle(){
-//     val wr_clk = Input(UInt(1.W))
-//     val wr_en = Input(UInt(1.W))
-//     val wr_addr = Input(UInt(addr_width.W))
-//     val wr_data = Input(UInt(data_width.W))
-//     val rd_clk = Input(UInt(1.W))
-//     val rd_en = Input(UInt(1.W))
-//     val rd_addr = Input(UInt(addr_width.W))
-//     val rd_data = Input(UInt(data_width.W))
-//   })
-// }
+class mem_dp_slice(data_width: Int, addr_width: Int, depth: Int, pipeline: Int) extends Blackbox{
+  val io = IO(new Bundle(){
+    val wr_clk = Input(Clock())
+    val wr_en = Input(UInt(1.W))
+    val wr_addr = Input(UInt(addr_width.W))
+    val wr_data = Input(UInt(data_width.W))
+    val rd_clk = Input(Clock())
+    val rd_en = Input(UInt(1.W))
+    val rd_addr = Input(UInt(addr_width.W))
+    val rd_data = Output(UInt(data_width.W))
+  })
+}
 class ConvConfig extends Bundle{
   val in_h = UInt(24.W)
   val in_w = UInt(24.W)
@@ -58,18 +58,9 @@ class InstDispatcher extends Module{
     val rd_filter = EnqIO(new BufIDInst())
     val wr_output = EnqIO(new BufIDInst())
     val rd_output = EnqIO(new BufIDInst())
-    val config = Output(new ConvConfig())
+    val config = Input(new ConvConfig())
   })
-  val config_in_h = RegInit(0.U(24.W))
-  val config_in_w = RegInit(0.U(24.W))
-  val config_c =    RegInit(0.U(24.W))
-  val config_ks =   RegInit(0.U(24.W))
-  val config_pad =  RegInit(0.U(24.W))
-  io.config.in_h := config_in_h
-  io.config.in_w := config_in_w
-  io.config.c := config_c
-  io.config.ks := config_ks
-  io.config.pad := config_pad
+  
   io.inst.ready := true.B
   // val wr_input =  DeqIO(new BufIDInst())
   // val wr_filter = DeqIO(new BufIDInst())
@@ -203,16 +194,8 @@ class InstDispatcher extends Module{
       rd_output_q.enq.bits.id := 0.U
       rd_output_q.enq.bits.free := false.B
     }
-    // config h, w
-    when(funct===8.U){
-      printf("funct=8")
-      config_in_h := rs1
-      config_in_w := rs2
-    }
-    when(funct===9.U){
-      config_c := rs1
-      config_ks := rs2
-    }
+
+    // config
   }.otherwise{
     wr_input_q.enq.valid := false.B
     wr_input_q.enq.bits.id := 0.U
@@ -233,7 +216,6 @@ class InstDispatcher extends Module{
     rd_output_q.enq.bits.id := 0.U
     rd_output_q.enq.bits.free := false.B
   }
-  
   // printf("%d %d\n",io.wr_input.valid, io.wr_input.bits.id)
   // printf("%d %d\n",io.wr_filter.valid, io.wr_filter.bits.id)
   // printf("%d %d\n",io.wr_output.valid, io.wr_output.bits.id)
@@ -247,7 +229,7 @@ class DFSysIn_Input(s: Int, line_len: Int, max_c: Int, max_ks: Int, cycle_read: 
   // case: C*ks*ks cycle, read a line=C*(W+ks-1)
   // output:
   // 出现输入一行长度不整除cycle_read_num，则末尾补0
-  val input_size = max_c * line_len //
+  val input_size = max_c * line_len //16*4*4
   // s = ((H+ks-1)*(W+ks-1))
 
   // t = C
@@ -265,7 +247,12 @@ class DFSysIn_Input(s: Int, line_len: Int, max_c: Int, max_ks: Int, cycle_read: 
   
   val num_tiles = RegInit(0.U(24.W))
   num_tiles :=(io.config.in_w + io.config.pad + io.config.pad - io.config.ks)/(s.asUInt)+1.U
-  val buf = SyncReadMem(max_ks*input_size, UInt(width.W))
+  //val buf = SyncReadMem(max_ks*input_size, UInt(width.W))
+  val buf = Module(mem_dp_slice(8, 12, 4096, 1)).io
+  buf.wr_clk := io.clock
+  buf.rd_clk := io.clock
+  buf.rd_en := 1.U
+
   val in_addr = RegInit(0.U(24.W))  //每行中的写地址
   val in_channel = RegInit(0.U(24.W))
   //val in_line = RegInit(0.U(24.W))//RegInit(io.config.pad * input_size.asUInt(24.W))  //在写第几行，从第x+1行开始输出
@@ -292,12 +279,11 @@ class DFSysIn_Input(s: Int, line_len: Int, max_c: Int, max_ks: Int, cycle_read: 
   //   printf("%d ",io.data_in.bits(i))
   // }
   // printf("\n")
-  printf("input to pe\n")
-  for(i <- 0 until s){
-    val addr=out_c(i)*line_len.asUInt+out_kw(i)+out_tile(i)*s.asUInt+(out_line(i) + out_col(i)) % (max_ks.asUInt) * input_size.asUInt+i.asUInt
-    printf("(%d,%d) ",addr, addr%16.U)
-  }
-  printf("\n")
+  // printf("input to pe\n")
+  // for(i <- 0 until s){
+  //   printf("(%d,%d) ",io.data_out.bits(i).valid,io.data_out.bits(i).bits)
+  // }
+  // printf("\n")
   // printf("out input inst valid: %d\n",io.out_inst.valid)
   // for(i <- 0 until s){
   //   printf("addr=%d,data=%d,valid=%d,row=%d,channel=%d, col=%d\n",out_c(i)*line_len.asUInt+out_kw(i)+out_tile(i)*s.asUInt+(out_line(i) + out_col(i)) % (max_ks.asUInt) * input_size.asUInt, buf.read(out_c(i)*line_len.asUInt+out_kw(i)+out_tile(i)*s.asUInt+(out_line(i) + out_col(i)) % (max_ks.asUInt) * input_size.asUInt), io.data_out.bits(i).valid, out_line(i)+out_col(i), out_c(i),out_kw(i)+out_tile(i)*s.asUInt)
@@ -530,14 +516,14 @@ class Update_Result(x: Int, s: Int, num_tile_h: Int, num_tile_w: Int, ipc: Int, 
   // printf("[%d %d %d %d %d %d] ",io.data_in(0).bits, io.data_in(0).valid, tile_w_id(0),h_id(0), update_addr(0),update_data(0))
   // printf("\n")
   // printf("output:[%d %d %d]\n", out_h, out_w, out_addr)
-  // printf("out mem status\n")
-  // for(i <- 0 until num_tile_w){
-  //   for(j <- 0 until x*s){
-  //     printf("%d ", mem.read((i*x*s+j).asUInt))
-  //   }
-  //   printf("\n")
-  // }
-  // printf("\n")
+  printf("out mem status\n")
+  for(i <- 0 until num_tile_w){
+    for(j <- 0 until x*s){
+      printf("%d ", mem.read((i*x*s+j).asUInt))
+    }
+    printf("\n")
+  }
+  printf("\n")
   num_tiles :=(io.config.in_w + io.config.pad + io.config.pad - io.config.ks)/(s.asUInt)+1.U
   outer_h := io.config.in_h + io.config.pad + io.config.pad - io.config.ks + 1.U
   //printf("%d %d %d %d %d\n",outer_h, h_id(0), num_tile_w.asUInt, num_tiles,(num_tile_h*num_tile_w*x*s).asUInt)

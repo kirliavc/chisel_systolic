@@ -1,0 +1,29 @@
+package systolic
+
+import chisel3._
+import chisel3.iotesters.{PeekPokeTester, Driver}
+import scala.collection.mutable.ArrayBuffer
+import scala.math.log10
+import chisel3.util._
+
+class MemTest extends Module{
+    val io = IO(new Bundle{
+        val dt = Input(Valid(UInt(4.W))))
+        val out = Output(UInt(4.W))
+    })
+    val buf = SyncReadMem(40, UInt(1.W))
+    val read_addr = RegInit(0.U(4.W))
+    val update_dt = RegInit(0.U(4.W))
+    val read_dt = RegInit(0.U(4.W))
+    val update_valid = RegInit(false.B)
+    val write_valid = RegInit(false.B)
+    update_valid := io.dt.valid
+    write_valid := update_valid
+    read_dt := mem.read(read_addr)
+    when(io.dt.valid){
+        read_addr := read_addr + 1.U
+    }
+    when(upadte_valid){
+        update_dt := read_dt + 
+    }
+}
