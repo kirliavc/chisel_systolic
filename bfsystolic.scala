@@ -73,7 +73,7 @@ class SystolicPE(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
     val stat = Module(new BFStatOut(id, dim, m, n, width)).io
     for(i <- 0 until 4){
         for(j <- 0 until 4){
-            pes(i)(j).in_row := reg_a.bits(i*16+15, i*16)
+            pes(i)(j).in_row := reg_a.bits(i*16+15, i*16) 
             pes(i)(j).in_column := reg_b.bits(j*16+15, j*16)
             pes(i)(j).ctrl := 5.U
             pes(i)(j).sgn := 1.U

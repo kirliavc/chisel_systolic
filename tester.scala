@@ -381,7 +381,7 @@ object Test2 extends App {
   //Driver(() => new Systolic_Rect(4, 4, 16, 4, 4, 1, 1, 16))(c => new Test_Res1(c))
   //Driver(() => new DFSysIn_Input(16, 256, 64, 5, 2, 8))(c => new Test_Input(c))
   //Driver(() => new DFSysIn_Kernel(16, 64, 1, 8, 8))(c => new Test_InKernel(c))
-  chisel3.Driver.execute(args, () => new Systolic_Rect(s=4,x=4,max_input_w=16, max_input_h=16, max_c=4, max_ks=5, cycle_read_input=4, cycle_read_kernel=9, cycle_out_res=4, m=8, n=8, width=8))
+  chisel3.Driver.execute(args, () => new Systolic_Rect(s=16,x=16,max_input_w=32, max_input_h=16, max_c=4, max_ks=5, cycle_read_input=4, cycle_read_kernel=9, cycle_out_res=4, m=8, n=8, width=8))
   //chisel3.Driver.execute(args, () => new Systolic_Rect(8,8,16,16,4, 5, 4, 9, 4, 1, 1, 8))
   //chisel3.Driver.execute(args, () => new Systolic_Rect(16, 8, 128, 16, 8, 1, 8, 32))
   //chisel3.Driver.execute(args, () => new NonSystolic(16, 16, 128, 16, 1, 8, 16))
