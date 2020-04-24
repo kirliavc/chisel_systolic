@@ -70,7 +70,7 @@ class InstDispatcher extends Module{
   io.config.c := config_c
   io.config.ks := config_ks
   io.config.pad := config_pad
-  io.inst.ready := wr_input_q.enq.ready && wr_filter_q.enq.ready && wr_output_q.enq.ready && rd_input_q.enq.ready
+  
   // val wr_input =  DeqIO(new BufIDInst())
   // val wr_filter = DeqIO(new BufIDInst())
   // val rd_input =  DeqIO(new BufIDInst())
@@ -83,6 +83,7 @@ class InstDispatcher extends Module{
   val rd_filter_q = Module(new Queue(new BufIDInst(), 10)).io
   val wr_output_q = Module(new Queue(new BufIDInst(), 10)).io
   val rd_output_q = Module(new Queue(new BufIDInst(), 10)).io
+  io.inst.ready := wr_input_q.enq.ready && wr_filter_q.enq.ready && wr_output_q.enq.ready && rd_input_q.enq.ready
   val input_en = RegInit(VecInit(Seq.fill(32)(false.B)))
   val filter_en = RegInit(VecInit(Seq.fill(32)(false.B)))
   val out_en = RegInit(VecInit(Seq.fill(32)(false.B)))
