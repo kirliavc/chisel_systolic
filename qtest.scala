@@ -27,6 +27,7 @@ class Test_Q(c: QSample) extends PeekPokeTester(c){
         step(1)
     }
 }
+class Mem
 // object Test3 extends App {
 //     Driver(() => new QSample())(c => new Test_Q(c))
 // }
