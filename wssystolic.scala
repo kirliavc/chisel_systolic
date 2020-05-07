@@ -206,12 +206,12 @@ class WSPE2(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
     io.exec_cycle := exec_cycle
 }
 
-class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_num: Int, cycle_read_kernel: Int, cycle_read_input: Int, cycle_out_res: Int, max_ks: Int, max_w: Int, batch: Int, width: Int) extends Module{
+class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_num: Int, cycle_read_kernel: Int, cycle_read_input: Int, cycle_out_res: Int, max_ks: Int, max_w: Int, batch: Int, width: Int) extends Module{
   val io = IO(new Bundle{
     val inst = DeqIO(new RoCCInstruction()) //指令输入
-    val a_in = DeqIO(Vec(cycle_read_kernel, UInt((n*width).W))) //数据输入
-    val b_in = DeqIO(Vec(cycle_read_input, UInt((m*width).W)))
-    val c_out = Output(Valid(Vec(cycle_out_res, UInt((m*n*width).W))))
+    val a_in = DeqIO(Vec(cycle_read_kernel, UInt((width).W))) //数据输入
+    val b_in = DeqIO(Vec(cycle_read_input, UInt((batch*width).W)))
+    val c_out = Output(Valid(Vec(cycle_out_res, UInt((batch*width).W))))
   })
   // val io = IO(new Bundle{
   //   val a_in = Vec(8, Valid(UInt(8.W)))
@@ -221,21 +221,44 @@ class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_n
   // stage cycle=24, cur cycle=8
   val in_a_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
   val in_b_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
+  val total_cycle = RegInit(0.U(10.W))
   val exec_cycle = RegInit(0.U(10.W))
   val ids = Module(new InstDispatcher()).io
-  val a_input = Module(new DFSysIn_Kernel(in_channel: in_channel, out_channel: out_channel, slot_num: ker_slot_num, slot_size: max_ks * max_ks * in_channel, cycle_read: Int, width: Int))
-  val b_input = Module(new WSSysIn_Input(pe_num: in_channel, slot_num: in_slot_num, slot_size: max_w * batch, cycle_read: cycle_read_input, width: Int))
-  val c_output = Module(new Update_Result(x, s, max_input_h, max_input_w/s, cycle_out_res, m*n*width))
+  val a_input = Module(new WSSysIn_Kernel(in_channel, out_channel, ker_slot_num, max_ks * max_ks * in_channel, in_channel, width))
+  val b_input = Module(new WSSysIn_Input(in_channel, in_slot_num, max_w, cycle_read_input, batch * width))
+  val c_output = Module(new Update_Result(out_channel, in_slot_num, max_w, out_channel, batch*width))
+  // 一开始的in_channel个cycle，输入filter到PE中，接下来的ks*ks*out_w个cycle用于计算。
+  total_cycle := ids.config.ks * ids.config.ks * ids.config.out_w + in_channel.asUInt
+  ids.inst <> io.inst
+
+
   a_input.io.in_inst <> ids.wr_filter
-  a_input.io.out_inst <> ids.rd_filter
+  a_input.io.out_inst.bits.id := ids.conv_exec.bits.filter_id
+  a_input.io.out_inst.valid := ids.conv_exec.valid
+  a_input.io.data_in.valid := io.a_in.valid
+  for(i <- 0 until cycle_read_kernel){
+    a_input.io.data_in.bits(i).bits := io.a_in.bits(i)
+    a_input.io.data_in.bits(i).valid := io.a_in.valid
+  }
   b_input.io.in_inst <> ids.wr_input
-  b_input.io.out_inst <> ids.rd_input
-  c_output.io.in_inst <> ids.wr_output
+  b_input.io.out_inst.bits.id := ids.conv_exec.bits.input_id
+  b_input.io.out_inst.valid := ids.conv_exec.valid
+  b_input.io.data_in.valid := io.b_in.valid
+  for(i <- 0 until cycle_read_input){
+    b_input.io.data_in.bits(i).bits := io.b_in.bits(i)
+    b_input.io.data_in.bits(i).valid := io.b_in.valid
+  }
+  c_output.io.in_inst.bits.id := ids.conv_exec.bits.output_id
+  c_output.io.in_inst.valid := ids.conv_exec.valid
   c_output.io.out_inst <> ids.rd_output
+  io.c_out.valid := c_output.io.data_out.valid
+  ids.conv_exec.ready := (exec_cycle===total_cycle-1.U) //最后一个cycle，conv指令结束，ready置为真，允许下一条指令进来
   io.a_in.ready := a_input.io.data_in.ready
   io.b_in.ready := b_input.io.data_in.ready
-  a_input.io.data_out.ready:=true.B
-  b_input.io.data_out.ready:=true.B
+  // filter的输入：每out_w个cycle，前in_channel个cycle输入，共输入ks*ks次
+  a_input.io.data_out.ready:=(exec_cycle%ids.config.out_w < in_channel.asUInt && exec_cycle < total_cycle - in_channel.asUInt)
+  // input的输入：前in_channel个cycle不输入，之后一直输入
+  b_input.io.data_out.ready:=(exec_cycle >= in_channel.asUInt)
   a_input.io.config:=ids.config
   b_input.io.config:=ids.config
   c_output.io.config:=ids.config
@@ -243,18 +266,13 @@ class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_n
   b_input.io.data_in.valid:=io.b_in.valid
   io.c_out:=c_output.io.data_out
 
-  // 如果input buffer的输出指令和filter buffer的输出指令均有效，则视为开始计算
-  // exec_cycle对应的是0号PE的cycle情况
-  // exec_cycle := (exec_cycle + ids.rd_input.valid && ids.rd_filter.valid)%ids.config.out_w
-  // when(exec_cycle < input_){
-  //   a_input.io.data_out.ready
-  // }.otherwise{
-  //   in_a_valid(0) := 0.U
-  // }
-  // for(i <- 1 until 8){
-  //   in_a_valid(i) := in_a_valid(i-1)
-  //   in_b_valid(i) := in_b_valid(i-1)
-  // }
+  //如果input buffer的输出指令和filter buffer的输出指令均有效，则视为开始计算
+  //exec_cycle对应的是0号PE的cycle情况
+  exec_cycle := (exec_cycle + ids.conv_exec.valid)%total_cycle
+  for(i <- 1 until 8){
+    in_a_valid(i) := in_a_valid(i-1)
+    in_b_valid(i) := in_b_valid(i-1)
+  }
   val pes = for(i <- 0 until 8) yield{
     for(j <- 0 until 8) yield{
       Module(new WSPE2(j, 16, 1, 1, 16)).io
@@ -273,15 +291,17 @@ class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_n
     }
   }
   for(i <- 0 until 8){
-    pes(i)(0).in_stage_cycle := 24.U
+    pes(i)(0).in_stage_cycle := ids.config.out_w
     pes(i)(0).in_c.bits := 0.U
     pes(i)(0).in_c.valid := true.B
-    pes(i)(0).in_a.bits := cur_data
-    pes(i)(0).in_a.valid := in_a_valid(i)
+    pes(i)(0).in_a.bits := a_input.io.data_out.bits(i).bits
+    pes(i)(0).in_a.valid := a_input.io.data_out.bits(i).valid
+    c_output.io.data_in(i).bits := pes(i)(in_channel-1).out_c.bits
+    c_output.io.data_in(i).valid := pes(i)(in_channel-1).out_c.valid
   }
   for(i <- 0 until 8){
-    pes(0)(i).in_b.bits := 1.U
-    pes(0)(i).in_b.valid := in_b_valid(i)
+    pes(0)(i).in_b.bits := b_input.io.data_out.bits(i).bits
+    pes(0)(i).in_b.valid := b_input.io.data_out.bits(i).valid
   }
   for(i <- 0 until 8){
     for(j <- 0 until 8){
@@ -293,6 +313,106 @@ class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_n
   }
   printf("\n")
 }
+
+// class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_num: Int, cycle_read_kernel: Int, cycle_read_input: Int, cycle_out_res: Int, max_ks: Int, max_w: Int, batch: Int, width: Int) extends Module{
+//   val io = IO(new Bundle{
+//     val inst = DeqIO(new RoCCInstruction()) //指令输入
+//     val a_in = DeqIO(Vec(cycle_read_kernel, UInt((width).W))) //数据输入
+//     val b_in = DeqIO(Vec(cycle_read_input, UInt((batch*width).W)))
+//     val c_out = Output(Valid(Vec(cycle_out_res, UInt((batch*width).W))))
+//   })
+//   // val io = IO(new Bundle{
+//   //   val a_in = Vec(8, Valid(UInt(8.W)))
+//   //   val b_in = Vec(8, Valid(UInt(8.W)))
+//   //   val c_out = Vec(8, Valid(UInt(8.W)))
+//   // })
+//   // stage cycle=24, cur cycle=8
+//   val in_a_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
+//   val in_b_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
+//   val exec_cycle = RegInit(0.U(10.W))
+//   val ids = Module(new InstDispatcher()).io
+//   val a_input = Module(new WSSysIn_Kernel(in_channel: in_channel, out_channel: out_channel, slot_num: ker_slot_num, slot_size: max_ks * max_ks * in_channel, cycle_read: Int, width: Int))
+//   val b_input = Module(new WSSysIn_Input(pe_num: in_channel, slot_num: in_slot_num, slot_size: max_w * batch, cycle_read: cycle_read_input, width: Int))
+//   val c_output = Module(new Update_Result(x, s, max_input_h, max_input_w/s, cycle_out_res, m*n*width))
+//   val b_wait_cycle = RegInit(0.U(10.W))
+//   when(ids.rd_input.ready && ids.rd_input.valid){
+//     b_wait_cycle := in_channel.asUInt - 1.U
+//   }.otherwise{
+//     b_wait_cycle := Mux(b_wait_cycle===0.U, 0.U, b_wait_cycle - ids.rd_input.valid)
+//   }
+//   val a_input_cycle = RegInit(0.U(10.W))
+//   when(ids.rd_filter.ready && ids.rd_filter.valid){
+//     a_input_cycle := 0.U
+//   }.otherwise{
+//     a_input_cycle := Mux(a_input_cycle + ids.rd_filter.valid===ids.config.out_w, 0.U, a_input_cycle + ids.rd_filter.valid)
+//   }
+//   a_input.io.in_inst <> ids.wr_filter
+//   a_input.io.out_inst <> ids.rd_filter
+//   b_input.io.in_inst <> ids.wr_input
+//   b_input.io.out_inst <> ids.rd_input
+//   c_output.io.in_inst <> ids.wr_output
+//   c_output.io.out_inst <> ids.rd_output
+//   io.a_in.ready := a_input.io.data_in.ready
+//   io.b_in.ready := b_input.io.data_in.ready
+//   a_input.io.data_out.ready:=(a_input_cycle < in_channel)
+//   b_input.io.data_out.ready:=(b_wait_cycle===0.U)
+//   a_input.io.config:=ids.config
+//   b_input.io.config:=ids.config
+//   c_output.io.config:=ids.config
+//   a_input.io.data_in.valid:=io.a_in.valid
+//   b_input.io.data_in.valid:=io.b_in.valid
+//   io.c_out:=c_output.io.data_out
+
+//   //如果input buffer的输出指令和filter buffer的输出指令均有效，则视为开始计算
+//   //exec_cycle对应的是0号PE的cycle情况
+//   exec_cycle := (exec_cycle + ids.rd_input.valid && ids.rd_filter.valid)%ids.config.out_w
+//   when(exec_cycle < input_){
+//     a_input.io.data_out.ready
+//   }.otherwise{
+//     in_a_valid(0) := 0.U
+//   }
+//   for(i <- 1 until 8){
+//     in_a_valid(i) := in_a_valid(i-1)
+//     in_b_valid(i) := in_b_valid(i-1)
+//   }
+//   val pes = for(i <- 0 until 8) yield{
+//     for(j <- 0 until 8) yield{
+//       Module(new WSPE2(j, 16, 1, 1, 16)).io
+//     }
+//   }
+//   for(i <- 0 until 8){
+//     for(j <- 1 until 8){
+//       pes(i)(j).in_a <> pes(i)(j-1).out_a
+//       pes(i)(j).in_c <> pes(i)(j-1).out_c
+//       pes(i)(j).in_stage_cycle := pes(i)(j-1).out_stage_cycle
+//     }
+//   }
+//   for(i <- 1 until 8){
+//     for(j <- 0 until 8){
+//       pes(i)(j).in_b <> pes(i-1)(j).out_b
+//     }
+//   }
+//   for(i <- 0 until 8){
+//     pes(i)(0).in_stage_cycle := 24.U
+//     pes(i)(0).in_c.bits := 0.U
+//     pes(i)(0).in_c.valid := true.B
+//     pes(i)(0).in_a.bits := cur_data
+//     pes(i)(0).in_a.valid := in_a_valid(i)
+//   }
+//   for(i <- 0 until 8){
+//     pes(0)(i).in_b.bits := 1.U
+//     pes(0)(i).in_b.valid := in_b_valid(i)
+//   }
+//   for(i <- 0 until 8){
+//     for(j <- 0 until 8){
+//       printf("(%d %d %d) ", pes(i)(j).out_a.bits, pes(i)(j).out_b.bits, pes(i)(j).out_c.bits)
+//       //printf("(a:%d, %d b:%d, %d c:%d, %d) ", pes(i)(j).out_a.bits, pes(i)(j).out_a.valid, pes(i)(j).out_b.bits,pes(i)(j).out_b.valid, pes(i)(j).out_c.bits, pes(i)(j).out_c.valid)
+//     }
+//     printf("\n")
+    
+//   }
+//   printf("\n")
+// }
 
 // class WSPE_BitFusion(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
 //     val io = IO(new Bundle {
@@ -372,7 +492,7 @@ class WSSystolic(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_slot_n
 //   printf("config: %d %d %d %d\n",ids.config.c, ids.config.ks, ids.config.in_w, ids.config.in_h)
 //   val stage_cycle = RegInit(333333.U(20.W))
 //   stage_cycle := ids.config.in_w
-//   ids.inst <> io.inst
+
 //   //ids.config := io.config
 //   val pes = for(i <- 0 until s) yield{
 //     for(j <- 0 until x) yield{

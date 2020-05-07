@@ -18,11 +18,8 @@ import chisel3.util._
 //   })
 // }
 class ConvConfig extends Bundle{
-  val in_h = UInt(24.W)
   val in_w = UInt(24.W)
-  val c = UInt(24.W)
   val ks = UInt(24.W)
-  val pad = UInt(24.W)
   val out_w = UInt(24.W)
   //val stride = UInt(24.W)
   //val buf_rep = UInt(24.W)
@@ -42,95 +39,97 @@ class RoCCInstruction extends Bundle {
 }
 class BufIDInst extends Bundle{
   val id = UInt(5.W)
-  val free = Bool()
 }
-class ComputeInst extends Bundle{
+class ConvInst extends Bundle{
   val input_id = UInt(5.W)
   val filter_id = UInt(5.W)
-  val out_id = UInt(5.W)
-  val free_buf = UInt(3.W)
+  val output_id = UInt(5.W)
+  val free = UInt(3.W)
 }
 class InstDispatcher extends Module{
   val io = IO(new Bundle{
     val inst = DeqIO(new RoCCInstruction())
     val wr_input = EnqIO(new BufIDInst())
     val wr_filter = EnqIO(new BufIDInst())
-    val rd_input = EnqIO(new BufIDInst())
-    val rd_filter = EnqIO(new BufIDInst())
-    val wr_output = EnqIO(new BufIDInst())
+    val conv_exec = EnqIO(new ConvInst())
+    //val rd_input = EnqIO(new BufIDInst())
+    //val rd_filter = EnqIO(new BufIDInst())
+    //val wr_output = EnqIO(new BufIDInst())
     val rd_output = EnqIO(new BufIDInst())
     val config = Output(new ConvConfig())
   })
-  val config_in_h = RegInit(0.U(24.W))
-  val config_in_w = RegInit(0.U(24.W))
-  val config_c =    RegInit(0.U(24.W))
   val config_ks =   RegInit(0.U(24.W))
   val config_pad =  RegInit(0.U(24.W))
-  io.config.in_h := config_in_h
-  io.config.in_w := config_in_w
-  io.config.c := config_c
+  val config_out_w =  RegInit(0.U(24.W))
+  val wr_input_q =  Module(new Queue(new BufIDInst(), 10)).io
+  val wr_filter_q = Module(new Queue(new BufIDInst(), 10)).io
+  val conv_q =  Module(new Queue(new ConvInst(), 10)).io
+  val rd_output_q = Module(new Queue(new BufIDInst(), 10)).io
+  val input_en = RegInit(VecInit(Seq.fill(32)(false.B)))
+  val filter_en = RegInit(VecInit(Seq.fill(32)(false.B)))
+  val out_en = RegInit(VecInit(Seq.fill(32)(false.B)))
+  val conv_pre_input_id = RegInit(0.U(10.W))
+  val conv_pre_filter_id = RegInit(0.U(10.W))
+  io.config.in_w := config_out_w + config_ks + config_ks - 1.U
   io.config.ks := config_ks
-  io.config.pad := config_pad
-  io.inst.ready := true.B
+  io.config.out_w := config_out_w
+  io.inst.ready := wr_input_q.enq.ready && wr_filter_q.enq.ready && conv_q.enq.ready && rd_output_q.enq.ready
   // val wr_input =  DeqIO(new BufIDInst())
   // val wr_filter = DeqIO(new BufIDInst())
   // val rd_input =  DeqIO(new BufIDInst())
   // val rd_filter = DeqIO(new BufIDInst())
   // val wr_output = DeqIO(new BufIDInst())
   // val rd_output = DeqIO(new BufIDInst())
-  val wr_input_q =  Module(new Queue(new BufIDInst(), 10)).io
-  val wr_filter_q = Module(new Queue(new BufIDInst(), 10)).io
-  val rd_input_q =  Module(new Queue(new BufIDInst(), 10)).io
-  val rd_filter_q = Module(new Queue(new BufIDInst(), 10)).io
-  val wr_output_q = Module(new Queue(new BufIDInst(), 10)).io
-  val rd_output_q = Module(new Queue(new BufIDInst(), 10)).io
-  val input_en = RegInit(VecInit(Seq.fill(32)(false.B)))
-  val filter_en = RegInit(VecInit(Seq.fill(32)(false.B)))
-  val out_en = RegInit(VecInit(Seq.fill(32)(false.B)))
-
+  
   // deq ops
   // printf("write buf: %d %d\n",io.wr_input.valid, io.wr_filter.valid)
   // printf("input_en: %d %d %d %d\n",input_en(0), input_en(1), input_en(2), filter_en(1))
   // printf("compute: %d %d %d\n", io.rd_input.valid, io.rd_filter.valid, io.wr_output.valid)
   // printf("rd_output: %d %d %d\n",io.rd_output.ready, io.rd_output.valid, io.rd_output.bits.id)
+
+  //以下是从队列中读取指令，并发送给加速器
+  // (1) 指令队列中有指令，且input_en满足条件
   io.wr_input.valid := wr_input_q.deq.valid && (!input_en(wr_input_q.deq.bits.id))
   io.wr_input.bits := wr_input_q.deq.bits
   wr_input_q.deq.ready := io.wr_input.ready
   when(io.wr_input.ready){
     input_en(io.wr_input.bits.id):=true.B
   }
+
   io.wr_filter.valid := wr_filter_q.deq.valid && (!filter_en(wr_filter_q.deq.bits.id))
   io.wr_filter.bits := wr_filter_q.deq.bits
   wr_filter_q.deq.ready := io.wr_filter.ready
   when(io.wr_filter.ready){
     filter_en(io.wr_filter.bits.id):=true.B
   }
-  io.rd_input.valid := rd_input_q.deq.valid && (!rd_input_q.deq.bits.free) && (input_en(rd_input_q.deq.bits.id + io.config.ks - 1.U)) && (filter_en(rd_filter_q.deq.bits.id)) && (!out_en(wr_output_q.deq.bits.id))
-  io.rd_input.bits := rd_input_q.deq.bits
-  rd_input_q.deq.ready := io.rd_input.ready || rd_input_q.deq.bits.free
-  when(rd_input_q.deq.bits.free){
-    input_en(rd_input_q.deq.bits.id):=false.B
+  // input_en
+  // out_en为false时，才可以写output
+  io.conv_exec.valid := 
+    conv_q.deq.valid && 
+    (!conv_q.deq.bits.free) &&
+    (input_en(conv_q.deq.bits.input_id + io.config.ks - 1.U)) && 
+    (filter_en(conv_q.deq.bits.filter_id)) && 
+    (!out_en(conv_q.deq.bits.output_id))
+  io.conv_exec.bits := conv_q.deq.bits
+  // conv完成，或者free操作时，直接完成指令，设置ready
+  conv_q.deq.ready := io.conv_exec.ready || (conv_q.deq.bits.free=/=0.U)
+  when(conv_q.deq.bits.free(0)){
+    input_en(conv_q.deq.bits.input_id):=false.B
+  }
+  when(conv_q.deq.bits.free(1)){
+    input_en(conv_q.deq.bits.filter_id):=false.B
+  }
+  when(conv_q.deq.bits.free(2)){
+    out_en(conv_q.deq.bits.output_id):=true.B
   }
 
-  io.rd_filter.valid := rd_filter_q.deq.valid && (!rd_filter_q.deq.bits.free) && (input_en(rd_input_q.deq.bits.id + io.config.ks - 1.U)) && (filter_en(rd_filter_q.deq.bits.id)) && (!out_en(wr_output_q.deq.bits.id))
-  io.rd_filter.bits := rd_filter_q.deq.bits
-  rd_filter_q.deq.ready := io.rd_filter.ready || rd_filter_q.deq.bits.free
-  when(rd_filter_q.deq.bits.free){
-    input_en(rd_filter_q.deq.bits.id):=false.B
-  }
-
-  io.wr_output.valid := wr_output_q.deq.valid && (!wr_output_q.deq.bits.free) && (input_en(rd_input_q.deq.bits.id + io.config.ks - 1.U)) && (filter_en(rd_filter_q.deq.bits.id)) && (!out_en(wr_output_q.deq.bits.id))
-  io.wr_output.bits := wr_output_q.deq.bits
-  wr_output_q.deq.ready := io.wr_output.ready || wr_output_q.deq.bits.free
-  when(io.wr_output.ready){ // output结束时
-    out_en(wr_output_q.deq.bits.id):=false.B
-  }
+  // out_en 为true时，才可以输出
   io.rd_output.valid := rd_output_q.deq.valid && (out_en(rd_output_q.deq.bits.id))
   io.rd_output.bits := rd_output_q.deq.bits
   rd_output_q.deq.ready := io.rd_output.ready
-  when(wr_output_q.deq.bits.free){  //free指令开始时
+  when(io.rd_output.ready){  //free指令开始时
     //printf("_____FREE_____%d\n",wr_output_q.deq.bits.id)
-    out_en(wr_output_q.deq.bits.id):=true.B
+    out_en(io.rd_output.bits.id):=false.B
   }
   // io.wr_filter <> wr_filter_q
   // io.rd_input <> rd_input_q
@@ -139,7 +138,7 @@ class InstDispatcher extends Module{
   // io.rd_output <> rd_output_q
 
   // push into task queues
-  when(io.inst.valid){
+  when(io.inst.valid&&io.inst.ready){
     val funct = io.inst.bits.funct
     val rs1 = io.inst.bits.rs1
     val rs2 = io.inst.bits.rs2
@@ -149,44 +148,37 @@ class InstDispatcher extends Module{
     when(funct===1.U){
       wr_input_q.enq.valid := true.B
       wr_input_q.enq.bits.id := rs1
-      wr_input_q.enq.bits.free := false.B
     }.otherwise{
       wr_input_q.enq.valid := false.B
       wr_input_q.enq.bits.id := 0.U
-      wr_input_q.enq.bits.free := false.B
     }
     // load filter
     when(funct===2.U){
       wr_filter_q.enq.valid := true.B
       wr_filter_q.enq.bits.id := rs1
-      wr_filter_q.enq.bits.free := false.B
     }.otherwise{
       wr_filter_q.enq.valid := false.B
       wr_filter_q.enq.bits.id := 0.U
-      wr_filter_q.enq.bits.free := false.B
     }
-    // compute, and mark flag
     when(funct===3.U){
-      rd_input_q.enq.valid := true.B
-      rd_input_q.enq.bits.id := rs1
-      rd_input_q.enq.bits.free := false.B
-      rd_filter_q.enq.valid := true.B
-      rd_filter_q.enq.bits.id := rs2
-      rd_filter_q.enq.bits.free := false.B
-      wr_output_q.enq.valid := true.B
-      wr_output_q.enq.bits.id := rd
-      wr_output_q.enq.bits.free := false.B
+      conv_pre_input_id := rs1
+      conv_pre_filter_id := rs2
+    }
+    // compute, and mark flag (4,5,6,7)
+    when(funct===4.U){
+      conv_q.enq.valid := true.B
+      conv_q.enq.bits.input_id := conv_pre_input_id
+      conv_q.enq.bits.filter_id := conv_pre_filter_id
+      conv_q.enq.bits.output_id := rs1
+      conv_q.enq.bits.free := 0.U
     }.otherwise{
       printf("free instruction, %d %d\n",funct, rs1)
-      rd_input_q.enq.valid := (funct===4.U)
-      rd_input_q.enq.bits.id := rs1
-      rd_input_q.enq.bits.free := true.B
-      rd_filter_q.enq.valid := (funct===5.U)
-      rd_filter_q.enq.bits.id := rs1
-      rd_filter_q.enq.bits.free := true.B
-      wr_output_q.enq.valid := (funct===6.U)
-      wr_output_q.enq.bits.id := rs1
-      wr_output_q.enq.bits.free := true.B
+      conv_q.enq.valid := (funct>=5.U)&&(funct<=7.U)
+      conv_q.enq.bits.input_id := Mux(funct===5.U, rs1, 0.U)
+      conv_q.enq.bits.filter_id := Mux(funct===6.U, rs1, 0.U)
+      conv_q.enq.bits.output_id := Mux(funct===7.U, rs1, 0.U)
+      // 5->4, 6->2, 7->1
+      conv_q.enq.bits.free := Mux(funct===5.U, 4.U, Mux(funct===6.U, 2.U, Mux(funct===7.U, 1.U, 0.U)))
     }
     /*
       free (rs1, rs2)
@@ -195,44 +187,31 @@ class InstDispatcher extends Module{
       x=2 --- output buf
     */
     // store
-    when(funct===7.U){
+    when(funct===8.U){
       rd_output_q.enq.valid := true.B
       rd_output_q.enq.bits.id := rs1
-      rd_output_q.enq.bits.free := false.B
     }.otherwise{
       rd_output_q.enq.valid := false.B
       rd_output_q.enq.bits.id := 0.U
-      rd_output_q.enq.bits.free := false.B
     }
     // config h, w
-    when(funct===8.U){
-      printf("funct=8")
-      config_in_h := rs1
-      config_in_w := rs2
-    }
     when(funct===9.U){
-      config_c := rs1
+      printf("funct=9")
+      config_out_w := rs1
       config_ks := rs2
     }
   }.otherwise{
     wr_input_q.enq.valid := false.B
     wr_input_q.enq.bits.id := 0.U
-    wr_input_q.enq.bits.free := false.B
     wr_filter_q.enq.valid := false.B
     wr_filter_q.enq.bits.id := 0.U
-    wr_filter_q.enq.bits.free := false.B
-    rd_input_q.enq.valid := false.B
-    rd_input_q.enq.bits.id := 0.U
-    rd_input_q.enq.bits.free := false.B
-    rd_filter_q.enq.valid := false.B
-    rd_filter_q.enq.bits.id := 0.U
-    rd_filter_q.enq.bits.free := false.B
-    wr_output_q.enq.valid := false.B
-    wr_output_q.enq.bits.id := 0.U
-    wr_output_q.enq.bits.free := false.B
+    conv_q.enq.valid := false.B
+    conv_q.enq.bits.input_id := 0.U
+    conv_q.enq.bits.filter_id := 0.U
+    conv_q.enq.bits.output_id := 0.U
+    conv_q.enq.bits.free := 0.U
     rd_output_q.enq.valid := false.B
     rd_output_q.enq.bits.id := 0.U
-    rd_output_q.enq.bits.free := false.B
   }
   
   // printf("%d %d\n",io.wr_input.valid, io.wr_input.bits.id)
@@ -246,9 +225,6 @@ class InstDispatcher extends Module{
 // Layout = NHWC
 class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int, width: Int) extends Module{
 
-  val input_size = max_c * line_len //
-  //val num_banks = 8
-  val max_tile = (line_len - 1)/num_banks+1
 
   val io=IO(new Bundle{
     val in_inst = DeqIO(new BufIDInst())
@@ -268,8 +244,21 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
   val can_out = RegInit(VecInit(Seq.fill(pe_num+1)(false.B))) 
   //输出的条件是：有这条指令，并且systolic array允许输入数据
   can_out(0) := io.out_inst.valid && io.data_out.ready
-  val out_kh = RegInit(VecInit(Seq.fill(pe_num)0.U(4.W)))
-  val out_kw = RegInit(VecInit(Seq.fill(pe_num)0.U(4.W)))
+  val out_kh = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
+  val out_kw = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
+
+  // 暂时不用ready来控制buffer，全部由整体的控制器来控制
+  io.in_inst.ready := true.B
+  io.out_inst.ready := true.B
+
+  // val in_inst_ready = RegInit(true.B)
+  // val out_inst_ready = RegInit(true.B)
+  // when(io.in_inst.valid && in_inst_ready){
+  //   in_inst_ready := false.B
+  // }
+  // when(io.out_inst.valid && out_inst_ready){
+  //   out_inst_ready := false.B
+  // }
   for(i <- 0 until pe_num){
     can_out(i+1) := can_out(i)
   }
@@ -282,44 +271,40 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
   when(io.data_in.valid && io.data_in.ready){
     for(i <- 0 until pe_num){
       buf_bank(i).write(io.in_inst.bits.id * (slot_size).asUInt + in_addr(i), io.data_in.bits(i).bits)
-      when(in_addr(i)+io.data_in.bits(i)<io.config.in_w){
+      when(in_addr(i)+io.data_in.bits(i).valid<io.config.in_w){
         in_addr(i):=in_addr(i)+io.data_in.bits(i).valid
       }.otherwise{
         in_addr(i):=0.U
       }
-      
     }
-    // 最后一个bank输入完毕，则该条指令完成
-    io.in_inst.ready := (in_addr(pe_num-1)===io.config.in_w - 1.U) && io.data_in.bits(pe_num-1).valid
+    // bank输入完毕，则该条指令完成
+    // when(in_addr(pe_num-1.U)===io.config.in_w - 1.U && io.data_in.bits(pe_num-1).valid){
+    //   in_inst_ready := true.B
+    // }
   }
-
   for(i <- 0 until pe_num){
     io.data_out.bits(i).bits:=buf_bank(i).read((io.out_inst.bits.id + out_kh(i)) * (slot_size).asUInt + out_addr(i)+out_kw(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
-  val out_fin := Wire(Bool())
   when(can_out(0)){
     when(out_addr(0)<io.config.out_w){
       out_addr(0):=out_addr(0)+1.U
-      out_fin := false.B
     }.otherwise{
+      out_addr(0):=0.U
       when(out_kw(0)<io.config.ks){
         out_kw(0):=out_kw(0)+1.U
-        out_fin := false.B
       }.otherwise{
+        out_kw(0) := 0.U
         when(out_kh(0)<io.config.ks){
           out_kh(0):=out_kh(0)+1.U
-          out_fin := false.B
         }.otherwise{
-          out_fin := true.B
+          out_kh(0):=0.U
         }
       }
     }
   }
   io.data_out.valid := true.B
 
-  // out_fin 表示一条指令做完了
-  io.out_inst.ready := out_fin  
 }
 // kernel的input buf， bank=output channel
 class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size: Int, cycle_read: Int, width: Int) extends Module{
@@ -339,8 +324,20 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
   val can_out = RegInit(VecInit(Seq.fill(out_channel+1)(false.B))) 
   can_out(0) := io.out_inst.valid && io.data_out.ready
-  val out_kh = RegInit(VecInit(Seq.fill(out_channel)0.U(4.W)))
-  val out_kw = RegInit(VecInit(Seq.fill(out_channel)0.U(4.W)))
+  val out_kh = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
+  val out_kw = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
+  io.in_inst.ready := true.B
+  io.out_inst.ready := true.B
+  // val in_inst_ready = RegInit(true.B)
+  // val out_inst_ready = RegInit(true.B)
+  
+  // when(io.in_inst.valid && in_inst_ready){
+  //   in_inst_ready := false.B
+  // }
+  // when(io.out_inst.valid && out_inst_ready){
+  //   out_inst_ready := false.B
+  // }
+
   for(i <- 0 until out_channel){
     can_out(i+1) := can_out(i)
   }
@@ -353,7 +350,7 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   when(io.data_in.valid && io.data_in.ready){
     for(i <- 0 until out_channel){
       buf_bank(i).write(io.in_inst.bits.id * (slot_size).asUInt + in_addr(i), io.data_in.bits(i).bits)
-      when(in_addr(i)+io.data_in.bits(i)<io.config.in_w){
+      when(in_addr(i)+io.data_in.bits(i).valid<in_channel.asUInt * io.config.ks * io.config.ks){
         in_addr(i):=in_addr(i)+io.data_in.bits(i).valid
       }.otherwise{
         in_addr(i):=0.U
@@ -361,30 +358,27 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
       
     }
     // 最后一个bank输入完毕，则该条指令完成，共输入c*ks*ks个
-    io.in_inst.ready := (in_addr(out_channel-1)===in_channel.asUInt * io.config.ks * io.config.ks - 1.U) && io.data_in.bits(out_channel-1).valid
+    
   }
-
   for(i <- 0 until out_channel){
 
     // 地址的layout： ks * ks * C
     io.data_out.bits(i).bits:=buf_bank(i).read(io.out_inst.bits.id * (slot_size).asUInt + (out_kh(i)*io.config.ks+out_kw(i))*in_channel.asUInt + out_addr(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
-  val out_fin := Wire(Bool())
   when(can_out(0)){
-    when(out_addr(0)<io.config.in_channel){
+    when(out_addr(0)<in_channel.asUInt){
       out_addr(0):=out_addr(0)+1.U
-      out_fin := false.B
     }.otherwise{
+      out_addr(0):=0.U
       when(out_kw(0)<io.config.ks){
         out_kw(0):=out_kw(0)+1.U
-        out_fin := false.B
       }.otherwise{
+        out_kw(0):=0.U
         when(out_kh(0)<io.config.ks){
           out_kh(0):=out_kh(0)+1.U
-          out_fin := false.B
         }.otherwise{
-          out_fin := true.B
+          out_kh(0):=0.U
         }
       }
     }
@@ -392,7 +386,51 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   io.data_out.valid := true.B
 
   // out_fin 表示一条指令做完了
-  io.out_inst.ready := out_fin  
+  io.out_inst.ready := out_addr(0)===0.U && out_kw(0)===0.U && out_kh(0)===0.U && io.data_out.ready
+}
+
+class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write: Int, width: Int) extends Module{
+  val io=IO(new Bundle{
+    val in_inst = DeqIO(new BufIDInst())
+    val out_inst = DeqIO(new BufIDInst())
+    val config = Input(new ConvConfig())
+    val data_in = Input(Vec(out_channel, Valid(UInt(width.W))))
+    val data_out = Output(Valid(Vec(out_channel,UInt(width.W))))
+  })
+  val buf_bank = for(i <- 0 until out_channel) yield{
+      SyncReadMem(slot_num * slot_size, UInt(width.W))
+  }
+  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))  //每行中的写地址
+  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
+  val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  val read_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  val update_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
+  val output_valid = RegInit(false.B)
+  val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))
+  io.in_inst.ready := true.B
+  output_valid := io.out_inst.valid
+  // PE to buffer
+  for(i <- 0 until out_channel){
+    read_data(i) := buf_bank(i).read(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
+    update_valid(i) := io.data_in(i).valid
+    when(io.data_in(i).valid){
+      in_addr(i) := (in_addr(i) + 1.U) % (io.config.out_w)
+      update_data(i) := read_data(i) + io.data_in(i).bits
+    }
+    when(update_valid(i)){
+      buf_bank(i).write(update_addr(i), update_data(i))
+    }
+  }
+
+  // buffer to MEM
+
+  for(i <- 0 until out_channel){
+    io.data_out.bits(i) := buf_bank(i).read(io.out_inst.bits.id * slot_size.asUInt + out_addr(i))
+    out_addr(i) := (out_addr(i) + io.out_inst.valid)%(io.config.out_w)
+    //io.data_out.bits(i).valid := io.out_inst.valid
+  }
+  io.data_out.valid := io.out_inst.valid
+  io.out_inst.ready := (out_addr(0)===io.config.out_w - 1.U)
 }
 // output contains multiple tiles, each tile k(s)*h(x)
 // result buffer has three dim: k * h * w
