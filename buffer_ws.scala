@@ -92,6 +92,7 @@ class InstDispatcher extends Module{
   io.wr_input.valid := wr_input_q.deq.valid && (!input_en(wr_input_q.deq.bits.id))
   io.wr_input.bits := wr_input_q.deq.bits
   wr_input_q.deq.ready := io.wr_input.ready
+  printf("io.wr_input.ready=%d\n",io.wr_input.ready)
   when(io.wr_input.ready){
     input_en(io.wr_input.bits.id):=true.B
   }
@@ -247,8 +248,9 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
   val out_kh = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
   val out_kw = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
 
-  // 暂时不用ready来控制buffer，全部由整体的控制器来控制
-  io.in_inst.ready := true.B
+  // 暂时不用ready来控制buffer输出，全部由整体的控制器来控制
+  // 但依然要控制buffer输入，ready表示输入完毕
+  //io.in_inst.ready := true.B
   io.out_inst.ready := true.B
 
   // val in_inst_ready = RegInit(true.B)
@@ -277,25 +279,30 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
         in_addr(i):=0.U
       }
     }
-    // bank输入完毕，则该条指令完成
-    // when(in_addr(pe_num-1.U)===io.config.in_w - 1.U && io.data_in.bits(pe_num-1).valid){
-    //   in_inst_ready := true.B
-    // }
+
+    //bank输入完毕，则该条指令完成
+    when(in_addr(pe_num-1)===io.config.in_w - 1.U && io.data_in.bits(pe_num-1).valid){
+      io.in_inst.ready := true.B
+    }.otherwise{
+      io.in_inst.ready := false.B
+    }
+  }.otherwise{
+    io.in_inst.ready := false.B
   }
   for(i <- 0 until pe_num){
     io.data_out.bits(i).bits:=buf_bank(i).read((io.out_inst.bits.id + out_kh(i)) * (slot_size).asUInt + out_addr(i)+out_kw(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
   when(can_out(0)){
-    when(out_addr(0)<io.config.out_w){
+    when(out_addr(0)+1.U<io.config.out_w){
       out_addr(0):=out_addr(0)+1.U
     }.otherwise{
       out_addr(0):=0.U
-      when(out_kw(0)<io.config.ks){
+      when(out_kw(0)+1.U<io.config.ks){
         out_kw(0):=out_kw(0)+1.U
       }.otherwise{
         out_kw(0) := 0.U
-        when(out_kh(0)<io.config.ks){
+        when(out_kh(0)+1.U<io.config.ks){
           out_kh(0):=out_kh(0)+1.U
         }.otherwise{
           out_kh(0):=0.U
@@ -319,14 +326,14 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   val buf_bank = for(i <- 0 until out_channel) yield{
       SyncReadMem(slot_num * slot_size, UInt(width.W))
   }
-  
+
   val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))  //每行中的写地址
   val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
   val can_out = RegInit(VecInit(Seq.fill(out_channel+1)(false.B))) 
   can_out(0) := io.out_inst.valid && io.data_out.ready
   val out_kh = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
   val out_kw = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
-  io.in_inst.ready := true.B
+  //io.in_inst.ready := true.B
   io.out_inst.ready := true.B
   // val in_inst_ready = RegInit(true.B)
   // val out_inst_ready = RegInit(true.B)
@@ -358,7 +365,13 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
       
     }
     // 最后一个bank输入完毕，则该条指令完成，共输入c*ks*ks个
-    
+    when(in_addr(out_channel-1)===in_channel.asUInt * io.config.ks * io.config.ks-1.U && io.data_in.bits(out_channel-1).valid){
+      io.in_inst.ready := true.B
+    }.otherwise{
+      io.in_inst.ready := false.B
+    }
+  }.otherwise{
+    io.in_inst.ready := false.B
   }
   for(i <- 0 until out_channel){
 
@@ -367,15 +380,15 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
     io.data_out.bits(i).valid:=can_out(i+1)
   }
   when(can_out(0)){
-    when(out_addr(0)<in_channel.asUInt){
+    when(out_addr(0)+1.U<in_channel.asUInt){
       out_addr(0):=out_addr(0)+1.U
     }.otherwise{
       out_addr(0):=0.U
-      when(out_kw(0)<io.config.ks){
+      when(out_kw(0)+1.U<io.config.ks){
         out_kw(0):=out_kw(0)+1.U
       }.otherwise{
         out_kw(0):=0.U
-        when(out_kh(0)<io.config.ks){
+        when(out_kh(0)+1.U<io.config.ks){
           out_kh(0):=out_kh(0)+1.U
         }.otherwise{
           out_kh(0):=0.U
@@ -386,7 +399,7 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   io.data_out.valid := true.B
 
   // out_fin 表示一条指令做完了
-  io.out_inst.ready := out_addr(0)===0.U && out_kw(0)===0.U && out_kh(0)===0.U && io.data_out.ready
+  //io.out_inst.ready := out_addr(0)===0.U && out_kw(0)===0.U && out_kh(0)===0.U && io.data_out.ready
 }
 
 class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write: Int, width: Int) extends Module{
@@ -400,6 +413,12 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   val buf_bank = for(i <- 0 until out_channel) yield{
       SyncReadMem(slot_num * slot_size, UInt(width.W))
   }
+  val buf_reg = RegInit(VecInit(Seq.fill(out_channel * slot_size)(0.U(width.W))))
+  printf("Output Buf Data\n")
+  for(i <- 0 until 12){
+    printf("%d ",buf_bank(0).read(i.asUInt))
+  }
+  printf("\n")
   val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))  //每行中的写地址
   val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
   val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
@@ -410,8 +429,10 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   io.in_inst.ready := true.B
   output_valid := io.out_inst.valid
   // PE to buffer
+  printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d\n",io.data_in(0).bits,read_data(0), in_addr(0), update_data(0), update_addr(0))
   for(i <- 0 until out_channel){
     read_data(i) := buf_bank(i).read(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
+    update_addr(i) := io.in_inst.bits.id * slot_size.asUInt + in_addr(i)
     update_valid(i) := io.data_in(i).valid
     when(io.data_in(i).valid){
       in_addr(i) := (in_addr(i) + 1.U) % (io.config.out_w)

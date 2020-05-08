@@ -221,13 +221,28 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   // stage cycle=24, cur cycle=8
   val in_a_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
   val in_b_valid = RegInit(VecInit(Seq.fill(8)(false.B)))
-  val total_cycle = RegInit(0.U(10.W))
+  val total_cycle = RegInit(1000.U(10.W))
   val exec_cycle = RegInit(0.U(10.W))
   val ids = Module(new InstDispatcher()).io
   val a_input = Module(new WSSysIn_Kernel(in_channel, out_channel, ker_slot_num, max_ks * max_ks * in_channel, in_channel, width))
   val b_input = Module(new WSSysIn_Input(in_channel, in_slot_num, max_w, cycle_read_input, batch * width))
   val c_output = Module(new Update_Result(out_channel, in_slot_num, max_w, out_channel, batch*width))
   // 一开始的in_channel个cycle，输入filter到PE中，接下来的ks*ks*out_w个cycle用于计算。
+  printf("total cycle=%d, exec_cycle=%d, ks=%d, w=%d, conv_exec.valid=%d\n", total_cycle, exec_cycle, ids.config.ks, ids.config.out_w, ids.conv_exec.valid)
+  printf("kernel buffer to PE\n")
+  for(i <- 0 until cycle_read_kernel){
+    printf("(%d, %d)",a_input.io.data_out.bits(i).bits,a_input.io.data_out.bits(i).valid)
+  }
+  printf("\n")
+  printf("input buffer to PE\n")
+  for(i <- 0 until cycle_read_input){
+    printf("(%d, %d)",b_input.io.data_out.bits(i).bits,b_input.io.data_out.bits(i).valid)
+  }
+  printf("PE to output buffer\n")
+  for(i <- 0 until cycle_read_input){
+    printf("(%d, %d)",c_output.io.data_in(i).bits,c_output.io.data_in(i).valid)
+  }
+  printf("\n")
   total_cycle := ids.config.ks * ids.config.ks * ids.config.out_w + in_channel.asUInt
   ids.inst <> io.inst
 
