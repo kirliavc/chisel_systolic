@@ -18,13 +18,13 @@ import chisel3.util._
 //   })
 // }
 class ConvConfig extends Bundle{
-  val in_w = UInt(24.W)
-  val ks = UInt(24.W)
-  val out_w = UInt(24.W)
-  //val stride = UInt(24.W)
-  //val buf_rep = UInt(24.W)
-  //val input_cycle = UInt(24.W)
-  //val c_tile_num = UInt(24.W)
+  val in_w = UInt(10.W)
+  val ks = UInt(10.W)
+  val out_w = UInt(10.W)
+  //val stride = UInt(10.W)
+  //val buf_rep = UInt(10.W)
+  //val input_cycle = UInt(10.W)
+  //val c_tile_num = UInt(10.W)
 }
 // inst: in_input 
 class RoCCInstruction extends Bundle {
@@ -58,9 +58,9 @@ class InstDispatcher extends Module{
     val rd_output = EnqIO(new BufIDInst())
     val config = Output(new ConvConfig())
   })
-  val config_ks =   RegInit(0.U(24.W))
-  val config_pad =  RegInit(0.U(24.W))
-  val config_out_w =  RegInit(0.U(24.W))
+  val config_ks =   RegInit(0.U(10.W))
+  val config_pad =  RegInit(0.U(10.W))
+  val config_out_w =  RegInit(0.U(10.W))
   val wr_input_q =  Module(new Queue(new BufIDInst(), 10)).io
   val wr_filter_q = Module(new Queue(new BufIDInst(), 10)).io
   val conv_q =  Module(new Queue(new ConvInst(), 10)).io
@@ -70,7 +70,7 @@ class InstDispatcher extends Module{
   val out_en = RegInit(VecInit(Seq.fill(32)(false.B)))
   val conv_pre_input_id = RegInit(0.U(10.W))
   val conv_pre_filter_id = RegInit(0.U(10.W))
-  io.config.in_w := config_out_w + config_ks + config_ks - 1.U
+  io.config.in_w := config_out_w + config_ks - 1.U
   io.config.ks := config_ks
   io.config.out_w := config_out_w
   io.inst.ready := wr_input_q.enq.ready && wr_filter_q.enq.ready && conv_q.enq.ready && rd_output_q.enq.ready
@@ -114,17 +114,22 @@ class InstDispatcher extends Module{
   io.conv_exec.bits := conv_q.deq.bits
   // conv完成，或者free操作时，直接完成指令，设置ready
   conv_q.deq.ready := io.conv_exec.ready || (conv_q.deq.bits.free=/=0.U)
+
+  // printf("CONV_Q FREE:%d %d %d %d\n",conv_q.deq.bits.free, conv_q.deq.bits.free(0), conv_q.deq.bits.free(1), conv_q.deq.bits.free(2))
+  // 用free的3个bit来说明具体是哪个buffer的free指令
   when(conv_q.deq.bits.free(0)){
-    input_en(conv_q.deq.bits.input_id):=false.B
+
+    out_en(conv_q.deq.bits.input_id):=true.B
   }
   when(conv_q.deq.bits.free(1)){
-    input_en(conv_q.deq.bits.filter_id):=false.B
+    filter_en(conv_q.deq.bits.filter_id):=false.B
   }
   when(conv_q.deq.bits.free(2)){
-    out_en(conv_q.deq.bits.output_id):=true.B
+    input_en(conv_q.deq.bits.output_id):=false.B
   }
 
   // out_en 为true时，才可以输出
+  printf("IDS RD Output Valid: %d\n", io.rd_output.valid)
   io.rd_output.valid := rd_output_q.deq.valid && (out_en(rd_output_q.deq.bits.id))
   io.rd_output.bits := rd_output_q.deq.bits
   rd_output_q.deq.ready := io.rd_output.ready
@@ -240,8 +245,8 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
   }
   //val buf = SyncReadMem(max_ks*input_size, UInt(width.W))
   
-  val in_addr = RegInit(VecInit(Seq.fill(pe_num)(0.U(24.W))))  //每行中的写地址
-  val out_addr = RegInit(VecInit(Seq.fill(pe_num)(0.U(24.W)))) 
+  val in_addr = RegInit(VecInit(Seq.fill(pe_num)(0.U(10.W))))  //每行中的写地址
+  val out_addr = RegInit(VecInit(Seq.fill(pe_num)(0.U(10.W)))) 
   val can_out = RegInit(VecInit(Seq.fill(pe_num+1)(false.B))) 
   //输出的条件是：有这条指令，并且systolic array允许输入数据
   can_out(0) := io.out_inst.valid && io.data_out.ready
@@ -327,8 +332,8 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
       SyncReadMem(slot_num * slot_size, UInt(width.W))
   }
 
-  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))  //每行中的写地址
-  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
+  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
+  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W)))) 
   val can_out = RegInit(VecInit(Seq.fill(out_channel+1)(false.B))) 
   can_out(0) := io.out_inst.valid && io.data_out.ready
   val out_kh = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
@@ -413,33 +418,46 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   val buf_bank = for(i <- 0 until out_channel) yield{
       SyncReadMem(slot_num * slot_size, UInt(width.W))
   }
-  val buf_reg = RegInit(VecInit(Seq.fill(out_channel * slot_size)(0.U(width.W))))
+  val buf_reg = for(i <- 0 until out_channel) yield{
+    RegInit(VecInit(Seq.fill(slot_num * slot_size)(0.U(width.W))))
+    //SyncReadMem(slot_num * slot_size, UInt(width.W))
+  }
+  //val buf_reg = RegInit(VecInit(Seq.fill(out_channel * slot_size)(0.U(width.W))))
+
   printf("Output Buf Data\n")
   for(i <- 0 until 12){
-    printf("%d ",buf_bank(0).read(i.asUInt))
+    printf("%d ",buf_reg(0)(i.asUInt))
   }
   printf("\n")
-  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))  //每行中的写地址
-  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W)))) 
+  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
+  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W)))) 
   val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
   val read_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
   val update_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
   val output_valid = RegInit(false.B)
-  val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(24.W))))
+  val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+  val write_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+  val in_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  
   io.in_inst.ready := true.B
   output_valid := io.out_inst.valid
   // PE to buffer
-  printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d\n",io.data_in(0).bits,read_data(0), in_addr(0), update_data(0), update_addr(0))
+  printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d Out Inst Valid: %d\n",io.data_in(0).bits,read_data(0), in_addr(0), update_data(0), update_addr(0), io.out_inst.valid)
   for(i <- 0 until out_channel){
-    read_data(i) := buf_bank(i).read(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
+    in_data(i) := io.data_in(i).bits
+    read_data(i) := buf_reg(i)(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
+    
+    //read_data(i) := buf_bank(i).read(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
     update_addr(i) := io.in_inst.bits.id * slot_size.asUInt + in_addr(i)
+    write_addr(i) := update_addr(i)
     update_valid(i) := io.data_in(i).valid
     when(io.data_in(i).valid){
       in_addr(i) := (in_addr(i) + 1.U) % (io.config.out_w)
-      update_data(i) := read_data(i) + io.data_in(i).bits
+      update_data(i) := read_data(i) + in_data(i)
     }
     when(update_valid(i)){
-      buf_bank(i).write(update_addr(i), update_data(i))
+      buf_reg(i)(write_addr(i)):=update_data(i)
+      //buf_bank(i).write(update_addr(i), update_data(i))
     }
   }
 
@@ -471,21 +489,21 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
 //   //mem layout: each tile (s*x), tile (rep_h * rep_w) *(s*x)
 //   //input order: c * h * tile_w * (s*x)
 //   val mem = SyncReadMem(num_tile_h*num_tile_w*x*s,UInt(width.W) )
-//   val tile_id = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val tile_k_id = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val h_id = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val tile_w_id = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val inner_k = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val num_tiles = RegInit(100.U(24.W))
-//   val outer_h = RegInit(100.U(24.W))
+//   val tile_id = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val tile_k_id = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val h_id = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val tile_w_id = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val inner_k = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val num_tiles = RegInit(100.U(10.W))
+//   val outer_h = RegInit(100.U(10.W))
 //   val update_data = RegInit(VecInit(Seq.fill(x)(0.U(width.W))))
 //   val read_data = RegInit(VecInit(Seq.fill(x)(0.U(width.W))))
-//   val update_addr = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
-//   val read_addr = RegInit(VecInit(Seq.fill(x)(0.U(24.W))))
+//   val update_addr = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
+//   val read_addr = RegInit(VecInit(Seq.fill(x)(0.U(10.W))))
 //   val update_valid = RegInit(VecInit(Seq.fill(x)(false.B)))
-//   val out_addr = RegInit(0.U(24.W))
-//   val out_h = RegInit(0.U(24.W))
-//   val out_w = RegInit(0.U(24.W))
+//   val out_addr = RegInit(0.U(10.W))
+//   val out_h = RegInit(0.U(10.W))
+//   val out_w = RegInit(0.U(10.W))
 //   val out_valid = RegInit(false.B)
 
 //   num_tiles :=(io.config.in_w + io.config.pad + io.config.pad - io.config.ks)/(s.asUInt)+1.U
@@ -579,7 +597,7 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
 //     io.out_inst.ready := false.B
 //   }
 //   io.data_out.valid := out_valid
-//   val last_addr = RegInit(0.U(24.W))
+//   val last_addr = RegInit(0.U(10.W))
 //   val last_out = RegInit(false.B)
 //   last_addr := io.out_inst.bits.id* (num_tile_w * s*x).asUInt + out_w * (s*x).asUInt + out_addr
 //   last_out := io.data_out.valid
