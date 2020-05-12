@@ -438,9 +438,10 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
   val write_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
   val in_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
-  
+  val update_slot = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
   io.in_inst.ready := true.B
   output_valid := io.out_inst.valid
+  update_slot(0) := io.in_inst.bits.id 
   // PE to buffer
   printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d Out Inst Valid: %d\n",io.data_in(0).bits,read_data(0), in_addr(0), update_data(0), update_addr(0), io.out_inst.valid)
   for(i <- 0 until out_channel){
