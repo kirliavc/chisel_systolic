@@ -249,13 +249,15 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
   val out_addr = RegInit(VecInit(Seq.fill(pe_num)(0.U(10.W)))) 
   val can_out = RegInit(VecInit(Seq.fill(pe_num+1)(false.B))) 
   //输出的条件是：有这条指令，并且systolic array允许输入数据
-  can_out(0) := io.out_inst.valid && io.data_out.ready
+  
   val out_kh = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
   val out_kw = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
-
+  val out_slot = RegInit(VecInit(Seq.fill(pe_num)(0.U(4.W))))
   // 暂时不用ready来控制buffer输出，全部由整体的控制器来控制
   // 但依然要控制buffer输入，ready表示输入完毕
   //io.in_inst.ready := true.B
+  can_out(0) := io.out_inst.valid && io.data_out.ready
+  out_slot(0) := io.out_inst.bits.id
   io.out_inst.ready := true.B
 
   // val in_inst_ready = RegInit(true.B)
@@ -273,6 +275,7 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
     out_kh(i):=out_kh(i-1)
     out_kw(i):=out_kw(i-1)
     out_addr(i):=out_addr(i-1)
+    out_slot(i):=out_slot(i-1)
   }
   io.data_in.ready := io.in_inst.valid
   when(io.data_in.valid && io.data_in.ready){
@@ -295,7 +298,7 @@ class WSSysIn_Input(pe_num: Int, slot_num: Int, slot_size: Int, cycle_read: Int,
     io.in_inst.ready := false.B
   }
   for(i <- 0 until pe_num){
-    io.data_out.bits(i).bits:=buf_bank(i).read((io.out_inst.bits.id + out_kh(i)) * (slot_size).asUInt + out_addr(i)+out_kw(i))
+    io.data_out.bits(i).bits:=buf_bank(i).read((out_slot(i) + out_kh(i)) * (slot_size).asUInt + out_addr(i)+out_kw(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
   when(can_out(0)){
@@ -338,8 +341,10 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   can_out(0) := io.out_inst.valid && io.data_out.ready
   val out_kh = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
   val out_kw = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
+  val out_slot = RegInit(VecInit(Seq.fill(out_channel)(0.U(4.W))))
   //io.in_inst.ready := true.B
   io.out_inst.ready := true.B
+  out_slot(0) := io.out_inst.bits.id
   // val in_inst_ready = RegInit(true.B)
   // val out_inst_ready = RegInit(true.B)
   
@@ -357,9 +362,10 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
     out_kh(i):=out_kh(i-1)
     out_kw(i):=out_kw(i-1)
     out_addr(i):=out_addr(i-1)
+    out_slot(i):=out_slot(i-1)
   }
-  io.data_in.ready := io.in_inst.valid
-  when(io.data_in.valid && io.data_in.ready){
+  io.data_in.ready := true.B
+  when(io.data_in.valid){
     for(i <- 0 until out_channel){
       buf_bank(i).write(io.in_inst.bits.id * (slot_size).asUInt + in_addr(i), io.data_in.bits(i).bits)
       when(in_addr(i)+io.data_in.bits(i).valid<in_channel.asUInt * io.config.ks * io.config.ks){
@@ -379,9 +385,8 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
     io.in_inst.ready := false.B
   }
   for(i <- 0 until out_channel){
-
     // 地址的layout： ks * ks * C
-    io.data_out.bits(i).bits:=buf_bank(i).read(io.out_inst.bits.id * (slot_size).asUInt + (out_kh(i)*io.config.ks+out_kw(i))*in_channel.asUInt + out_addr(i))
+    io.data_out.bits(i).bits:=buf_bank(i).read(out_slot(0) * (slot_size).asUInt + (out_kh(i)*io.config.ks+out_kw(i))*in_channel.asUInt + out_addr(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
   when(can_out(0)){
@@ -415,9 +420,9 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
     val data_in = Input(Vec(out_channel, Valid(UInt(width.W))))
     val data_out = Output(Valid(Vec(out_channel,UInt(width.W))))
   })
-  val buf_bank = for(i <- 0 until out_channel) yield{
-      SyncReadMem(slot_num * slot_size, UInt(width.W))
-  }
+  // val buf_bank = for(i <- 0 until out_channel) yield{
+  //     SyncReadMem(slot_num * slot_size, UInt(width.W))
+  // }
   val buf_reg = for(i <- 0 until out_channel) yield{
     RegInit(VecInit(Seq.fill(slot_num * slot_size)(0.U(width.W))))
     //SyncReadMem(slot_num * slot_size, UInt(width.W))
@@ -429,34 +434,41 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
     printf("%d ",buf_reg(0)(i.asUInt))
   }
   printf("\n")
+
   val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
   val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W)))) 
   val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
   val read_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
   val update_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
+  val update_valid2 = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
   val output_valid = RegInit(false.B)
   val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
   val write_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
   val in_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
-  val update_slot = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+  val update_slot = RegInit(VecInit(Seq.fill(out_channel*2)(0.U(10.W))))
+
   io.in_inst.ready := true.B
   output_valid := io.out_inst.valid
   update_slot(0) := io.in_inst.bits.id 
+  for(i <- 1 until out_channel*2){
+    update_slot(i) := update_slot(i-1)
+  }
   // PE to buffer
-  printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d Out Inst Valid: %d\n",io.data_in(0).bits,read_data(0), in_addr(0), update_data(0), update_addr(0), io.out_inst.valid)
+  printf("Update_Result: in_data=%d, read_data=%d, read_addr=%d, update_data=%d, update_addr=%d Out Inst Valid: %d\n",in_data(0),read_data(0), in_addr(0), update_data(0), update_addr(0), io.out_inst.valid)
   for(i <- 0 until out_channel){
     in_data(i) := io.data_in(i).bits
-    read_data(i) := buf_reg(i)(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
+    read_data(i) := buf_reg(i)(update_slot(out_channel-1+i) * slot_size.asUInt + in_addr(i))
     
     //read_data(i) := buf_bank(i).read(io.in_inst.bits.id * slot_size.asUInt + in_addr(i))
-    update_addr(i) := io.in_inst.bits.id * slot_size.asUInt + in_addr(i)
+    update_addr(i) := update_slot(out_channel-1+i) * slot_size.asUInt + in_addr(i)
     write_addr(i) := update_addr(i)
     update_valid(i) := io.data_in(i).valid
+    update_valid2(i) := update_valid(i)
     when(io.data_in(i).valid){
       in_addr(i) := (in_addr(i) + 1.U) % (io.config.out_w)
       update_data(i) := read_data(i) + in_data(i)
     }
-    when(update_valid(i)){
+    when(update_valid2(i)){
       buf_reg(i)(write_addr(i)):=update_data(i)
       //buf_bank(i).write(update_addr(i), update_data(i))
     }
@@ -465,7 +477,7 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   // buffer to MEM
 
   for(i <- 0 until out_channel){
-    io.data_out.bits(i) := buf_bank(i).read(io.out_inst.bits.id * slot_size.asUInt + out_addr(i))
+    io.data_out.bits(i) := buf_reg(i)(io.out_inst.bits.id * slot_size.asUInt + out_addr(i))
     out_addr(i) := (out_addr(i) + io.out_inst.valid)%(io.config.out_w)
     //io.data_out.bits(i).valid := io.out_inst.valid
   }

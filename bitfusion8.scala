@@ -5,26 +5,7 @@ import chisel3.util._
 //import chisel3.Driver
 import chisel3.iotesters.{PeekPokeTester, Driver}
 
-class MicArch extends Module {
-  val io = IO(new Bundle {
-    val in_row = Input(UInt(2.W))
-    val in_column = Input(UInt(2.W))
-    val p = Output(UInt(4.W))
-  })
-  val lo = Wire(UInt(4.W))
-  val hi = Wire(UInt(4.W))
-  when(io.in_column(0).toBool){
-    lo := io.in_row
-  }.otherwise {
-    lo := 0.U
-  }
-  when(io.in_column(1).toBool) {
-    hi := io.in_row << 1
-  }.otherwise {
-    hi := 0.U
-  }
-  io.p := lo + hi
-}
+
 class Addition(row_width:Int,col_width:Int,out_p_width:Int) extends Module{
   val io = IO(new Bundle{
     val row = Input(UInt(row_width.W))
@@ -69,21 +50,13 @@ class Unit4 extends Module {
   }
   val row = RegInit(0.U(4.W))
   val column = RegInit(0.U(4.W))
-  val micArch = VecInit(Seq.fill(4){Module(new MicArch()).io})
+  //val micArch = VecInit(Seq.fill(4){Module(new MicArch()).io})
   row := io.in_row
   column := io.in_column
   val addition = Wire(UInt(8.W))
   addition := Addition(row,column,io.sgn,4,4,8)
-  for (i <- 0 until 2)
-    for (j <- 0 until 2) {
-      micArch(i*2+j).in_row := row(3-2*i,2-2*i)
-      micArch(i*2+j).in_column := column(3-2*j,2-2*j)
-    }
-  val p_sub = Wire(Vec(4,UInt(4.W)))
   val p_total = Wire(UInt(8.W))
-  for (i <- 0 until 4)
-    p_sub(i) := micArch(i).p
-  p_total := (p_sub(0)<<4) + (p_sub(1)<<2) + (p_sub(2)<<2) + p_sub(3)
+  p_total := row*column
   io.res_out := io.res_in + p_total + addition
   io.out_p := p_total
   io.out_row := row
@@ -344,4 +317,25 @@ class DynamicPE_WS extends Module {
 
   io.statC_out := MuxLookup(io.ctrl, 0.U,
     Array(1.U -> res404_out.asUInt, 2.U -> res408_out.asUInt,4.U -> res808_out.asUInt, 5.U -> res8016_out.asUInt, 6.U -> res16016_out.asUInt))
+}
+class DynamicPE_Batch extends Module {
+  val io = IO(new Bundle {
+    val ctrl = Input(UInt(3.W))
+    val in_row = Input(Vec(16, UInt(16.W)))
+    val in_column = Input(UInt(16.W))
+    val sgn = Input(UInt(1.W))
+    val statC_in = Input(Vec(16, UInt(128.W)))
+    val statC_out = Output(Vec(16, UInt(128.W)))
+  })
+  val pe = for(i <- 0 until 16) yield{
+    Module(new DynamicPE_WS())
+  }
+  for(i <- 0 until 16){
+    pe(i).io.ctrl := io.ctrl
+    pe(i).io.sgn := io.sgn
+    pe(i).io.in_row := io.in_row(i)
+    pe(i).io.in_column := io.in_column(i)
+    pe(i).io.statC_in := io.statC_in(i)
+    io.statC_out(i) := pe(i).io.statC_out
+  }
 }

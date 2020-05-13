@@ -136,7 +136,7 @@ import chisel3.iotesters.{PeekPokeTester, Driver}
 //     io.out_a.bits := trans_a.bits
 //     io.out_a.valid := trans_a.valid
 // }
-class WSPE2(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
+class WSPE(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
     val io = IO(new Bundle {
       val in_stage_cycle = Input(UInt(10.W))
       val out_stage_cycle = Output(UInt(10.W))
@@ -195,7 +195,7 @@ class WSPE2(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
     reg_c.valid := io.in_c.valid
     reg_c.bits := io.in_c.bits
     io.out_c.bits := pe.out_c
-    io.out_c.valid := reg_b.valid
+    io.out_c.valid := reg_c.valid
     pe.in_c := reg_c.bits
     io.out_b.bits := reg_b.bits
     io.out_b.valid := reg_b.valid
@@ -290,7 +290,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   }
   val pes = for(i <- 0 until in_channel) yield{
     for(j <- 0 until out_channel) yield{
-      Module(new WSPE2(j, in_channel, 1, batch, width)).io
+      Module(new WSPE(j, in_channel, 1, batch, width)).io
     }
   }
   for(i <- 0 until in_channel){
@@ -392,7 +392,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
 //   }
 //   val pes = for(i <- 0 until 8) yield{
 //     for(j <- 0 until 8) yield{
-//       Module(new WSPE2(j, 16, 1, 1, 16)).io
+//       Module(new WSPE(j, 16, 1, 1, 16)).io
 //     }
 //   }
 //   for(i <- 0 until 8){
