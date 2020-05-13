@@ -219,7 +219,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   //   val c_out = Vec(8, Valid(UInt(8.W)))
   // })
   // stage cycle=24, cur cycle=8
-  val in_a_valid = RegInit(VecInit(Seq.fill(in_channel)(false.B)))
+  val in_a_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
   val in_b_valid = RegInit(VecInit(Seq.fill(in_channel)(false.B)))
   val total_cycle = RegInit(1000.U(10.W))
   val exec_cycle = RegInit(0.U(10.W))
@@ -284,28 +284,30 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   //如果input buffer的输出指令和filter buffer的输出指令均有效，则视为开始计算
   //exec_cycle对应的是0号PE的cycle情况
   exec_cycle := (exec_cycle + ids.conv_exec.valid)%total_cycle
-  for(i <- 1 until in_channel){
+  for(i <- 1 until out_channel){
     in_a_valid(i) := in_a_valid(i-1)
+  }
+  for(i <- 1 until in_channel){
     in_b_valid(i) := in_b_valid(i-1)
   }
-  val pes = for(i <- 0 until in_channel) yield{
-    for(j <- 0 until out_channel) yield{
+  val pes = for(i <- 0 until out_channel) yield{
+    for(j <- 0 until in_channel) yield{
       Module(new WSPE(j, in_channel, 1, batch, width)).io
     }
   }
-  for(i <- 0 until in_channel){
-    for(j <- 1 until out_channel){
+  for(i <- 0 until out_channel){
+    for(j <- 1 until in_channel){
       pes(i)(j).in_a <> pes(i)(j-1).out_a
       pes(i)(j).in_c <> pes(i)(j-1).out_c
       pes(i)(j).in_stage_cycle := pes(i)(j-1).out_stage_cycle
     }
   }
-  for(i <- 1 until in_channel){
-    for(j <- 0 until out_channel){
+  for(i <- 1 until out_channel){
+    for(j <- 0 until in_channel){
       pes(i)(j).in_b <> pes(i-1)(j).out_b
     }
   }
-  for(i <- 0 until in_channel){
+  for(i <- 0 until out_channel){
     pes(i)(0).in_stage_cycle := ids.config.out_w
     pes(i)(0).in_c.bits := 0.U
     pes(i)(0).in_c.valid := true.B
@@ -318,7 +320,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
     pes(0)(i).in_b.bits := b_input.io.data_out.bits(i).bits
     pes(0)(i).in_b.valid := b_input.io.data_out.bits(i).valid
   }
-  for(i <- 0 until in_channel){
+  for(i <- 0 until out_channel){
     for(j <- 0 until in_channel){
       printf("(%d %d %d) ", pes(i)(j).out_a.bits, pes(i)(j).out_b.bits, pes(i)(j).out_c.bits)
       //printf("(a:%d, %d b:%d, %d c:%d, %d) ", pes(i)(j).out_a.bits, pes(i)(j).out_a.valid, pes(i)(j).out_b.bits,pes(i)(j).out_b.valid, pes(i)(j).out_c.bits, pes(i)(j).out_c.valid)
