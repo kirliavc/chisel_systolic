@@ -21,7 +21,7 @@ class ConvConfig extends Bundle{
   val in_w = UInt(10.W)
   val ks = UInt(10.W)
   val out_w = UInt(10.W)
-  //val stride = UInt(10.W)
+  val stride = UInt(10.W)
   //val buf_rep = UInt(10.W)
   //val input_cycle = UInt(10.W)
   //val c_tile_num = UInt(10.W)
@@ -70,6 +70,7 @@ class InstDispatcher extends Module{
   val out_en = RegInit(VecInit(Seq.fill(32)(false.B)))
   val conv_pre_input_id = RegInit(0.U(10.W))
   val conv_pre_filter_id = RegInit(0.U(10.W))
+  io.config.stride := 1.U
   io.config.in_w := config_out_w + config_ks - 1.U
   io.config.ks := config_ks
   io.config.out_w := config_out_w
@@ -364,7 +365,7 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
     out_addr(i):=out_addr(i-1)
     out_slot(i):=out_slot(i-1)
   }
-  io.data_in.ready := true.B
+  io.data_in.ready := io.in_inst.valid
   when(io.data_in.valid){
     for(i <- 0 until out_channel){
       buf_bank(i).write(io.in_inst.bits.id * (slot_size).asUInt + in_addr(i), io.data_in.bits(i).bits)
