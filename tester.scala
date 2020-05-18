@@ -72,23 +72,25 @@ class TestInst(c: WSSystolic_Test) extends PeekPokeTester(c){
 
   val > = Array
   val mat_in = Array.ofDim[Int](5, 4, 12)
-  val mat_pad = Array.fill(7, 4, 14)(0)
-  val mat_fil = Array.fill(20, 4, 9)(0)
-  val mat_out = Array.ofDim[Int](5, 8, 12)
+
+  // h=7, c=16, in_w=14
+  val mat_pad = Array.fill(7, 8, 14)(0)
+  val mat_fil = Array.fill(8, 8, 9)(0)
+  val mat_out = Array.ofDim[Int](5, 16, 12)
   val rand = scala.util.Random
   // input: 2*4*12
   // filter: 8*4*9
   // Console.printf("mat_in\n")
-  // for(i <- 0 until 7){
-  //   for(j <- 0 until 4){
-  //     for(k <- 0 until 12){
-  //       mat_pad(i)(j)(k)=rand.nextInt(3)//k%3
-  //       Console.printf("%d ",mat_pad(i)(j)(k))
-  //     }
-  //     Console.printf("\n")
-  //   }
-  //   Console.printf("\n")
-  // }
+  for(i <- 0 until 7){
+    for(j <- 0 until 8){
+      for(k <- 0 until 14){
+        mat_pad(i)(j)(k)=rand.nextInt(3)//k%3
+        Console.printf("%d ",mat_pad(i)(j)(k))
+      }
+      Console.printf("\n")
+    }
+    Console.printf("\n")
+  }
   // // Console.printf("mat_pad\n")
   // // for(i <- 0 until 5){
   // //   for(j <- 0 until 4){
@@ -106,53 +108,55 @@ class TestInst(c: WSSystolic_Test) extends PeekPokeTester(c){
   // //   }
   // //   Console.printf("\n")
   // // }
-  // Console.printf("mat_filter\n")
-  // for(i <- 0 until 8){
-  //   for(j <- 0 until 4){
-  //     for(k <- 0 until 9){
-  //       mat_fil(i)(j)(k)=rand.nextInt(3)
-  //       Console.printf("%d ",mat_fil(i)(j)(k))
-  //     }
-  //     Console.printf("\n")
-  //   }
-  //   Console.printf("\n")
-  // }
-  // Console.printf("mat_out\n")
-  // for(i <- 0 until 5){
-  //   for(j <- 0 until 8){
-  //     for(k <- 0 until 10){
-  //       mat_out(i)(j)(k)=0
-  //       for(l <- 0 until 4){
-  //         for(m <- 0 until 3){
-  //           for(n <- 0 until 3){
-  //             mat_out(i)(j)(k)=mat_out(i)(j)(k)+mat_pad(i+m)(l)(k+n)*mat_fil(j)(l)(m*3+n)
-  //           }
-  //         }
-  //       }
-  //       Console.printf("%d ",mat_out(i)(j)(k))
-  //     }
-  //     Console.printf("\n")
-  //   }
-  //   Console.printf("\n")
-  // }
-  // var idx_input = 0
+  Console.printf("mat_filter\n")
+  for(i <- 0 until 8){
+    for(j <- 0 until 8){
+      for(k <- 0 until 9){
+        mat_fil(i)(j)(k)=rand.nextInt(3)
+        Console.printf("%d ",mat_fil(i)(j)(k))
+      }
+      Console.printf("\n")
+    }
+    Console.printf("\n")
+  }
+  Console.printf("mat_out\n")
+  for(i <- 0 until 5){
+    for(j <- 0 until 8){
+      for(k <- 0 until 12){
+        mat_out(i)(j)(k)=0
+        for(l <- 0 until 8){
+          for(m <- 0 until 3){
+            for(n <- 0 until 3){
+              mat_out(i)(j)(k)=mat_out(i)(j)(k)+mat_pad(i+m)(l)(k+n)*mat_fil(j)(l)(m*3+n)
+            }
+          }
+        }
+        Console.printf("%d ",mat_out(i)(j)(k))
+      }
+      Console.printf("\n")
+    }
+    Console.printf("\n")
+  }
+  var idx_input = 0
   var idx_filter = 0
-  for(i <- 0 until 84){
+  // input: 7 * 14 cycle
+  // input inst: 14 cycles
+  // filter inst: 8*9 cycles
+  for(i <- 0 until 100){
     if(peek(c.io.b_in.ready).intValue==1){
       for(k <- 0 until cycle_read_input){
         // h c w
-        poke(c.io.b_in.bits(k),1)
-        //idx_input=idx_input+1
+        poke(c.io.b_in.bits(k),mat_pad(idx_input/14)(k)(idx_input%14))
       }
+      idx_input=idx_input+1
     }
     if(peek(c.io.a_in.ready).intValue==1){
       for(k <- 0 until cycle_read_kernel){
-        poke(c.io.a_in.bits(k),idx_filter/8+1)
-        
+        poke(c.io.a_in.bits(k),mat_fil(k)(idx_filter%8)(idx_filter/8))
       }
       idx_filter = idx_filter + 1
     }
-    print("input filter index:%d",idx_filter)
+    print("input filter index:",idx_input, idx_filter)
     // if(peek(c.io.b_in.ready).intValue==1){
     //   for(k <- 0 until cycle_read_input){
     //     // h c w
@@ -401,7 +405,7 @@ class TestInst(c: WSSystolic_Test) extends PeekPokeTester(c){
 //Systolic_Rect(s: Int, x: Int, max_input_w: Int, max_input_h: Int, max_c: Int, max_ks: Int, cycle_read_input: Int, cycle_read_kernel: Int, cycle_out_res: Int, m: Int, n: Int, width: Int)
 object Test2 extends App {
   Driver(() => new WSSystolic_Test(in_channel=8, out_channel=8, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=8, cycle_read_input=8, cycle_out_res=8, max_ks=4, max_w=32, batch=16, width=8))(c => new TestInst(c))
-  //chisel3.Driver.execute(args, () => new WSSystolic_Test(in_channel=8, out_channel=8, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=8, cycle_read_input=8, cycle_out_res=8, max_ks=4, max_w=32, batch=16, width=16) )
+  //chisel3.Driver.execute(args, () => new WSSystolic_Test(in_channel=4, out_channel=4, in_slot_num=4, ker_slot_num=4, cycle_read_kernel=4, cycle_read_input=4, cycle_out_res=4, max_ks=4, max_w=64, batch=16, width=8) )
   //Driver(() => new Systolic_Rect(s=8,x=8,max_input_w=16, max_input_h=16, max_c=4, max_ks=5, cycle_read_input=4, cycle_read_kernel=9, cycle_out_res=4, m=1, n=1, width=8))(c => new TestInst(c))
   //Driver(() => new Systolic_Rect(4, 4, 16, 4, 4, 1, 1, 16))(c => new Test_Res1(c))
   //Driver(() => new DFSysIn_Input(16, 256, 64, 5, 2, 8))(c => new Test_Input(c))

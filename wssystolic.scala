@@ -195,7 +195,7 @@ class WSPE(id: Int, dim: Int, m: Int, n: Int, width: Int) extends Module{
     reg_c.valid := io.in_c.valid
     reg_c.bits := io.in_c.bits
     io.out_c.bits := pe.out_c
-    io.out_c.valid := reg_c.valid
+    io.out_c.valid := reg_c.valid && reg_b.valid
     pe.in_c := reg_c.bits
     io.out_b.bits := reg_b.bits
     io.out_b.valid := reg_b.valid

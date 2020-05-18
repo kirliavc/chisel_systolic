@@ -387,7 +387,7 @@ class WSSysIn_Kernel(in_channel: Int, out_channel: Int, slot_num: Int, slot_size
   }
   for(i <- 0 until out_channel){
     // 地址的layout： ks * ks * C
-    io.data_out.bits(i).bits:=buf_bank(i).read(out_slot(0) * (slot_size).asUInt + (out_kh(i)*io.config.ks+out_kw(i))*in_channel.asUInt + out_addr(i))
+    io.data_out.bits(i).bits:=buf_bank(i).read(out_slot(0) * (slot_size).asUInt + (out_kh(i)*io.config.ks+out_kw(i))*in_channel.asUInt + in_channel.asUInt - 1.U - out_addr(i))
     io.data_out.bits(i).valid:=can_out(i+1)
   }
   when(can_out(0)){
@@ -431,9 +431,13 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   //val buf_reg = RegInit(VecInit(Seq.fill(out_channel * slot_size)(0.U(width.W))))
 
   printf("Output Buf Data\n")
-  for(i <- 0 until 12){
-    printf("%d ",buf_reg(0)(i.asUInt))
+  for(i <- 0 until 8){
+    for(j <- 0 until 12){
+      printf("%d ",buf_reg(i)(j.asUInt))
+    }
+    printf("\n")
   }
+  
   printf("\n")
 
   val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
