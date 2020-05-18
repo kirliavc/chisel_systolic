@@ -93,7 +93,7 @@ class InstDispatcher extends Module{
   io.wr_input.valid := wr_input_q.deq.valid && (!input_en(wr_input_q.deq.bits.id))
   io.wr_input.bits := wr_input_q.deq.bits
   wr_input_q.deq.ready := io.wr_input.ready
-  printf("io.wr_input.ready=%d\n",io.wr_input.ready)
+  //printf("io.wr_input.ready=%d\n",io.wr_input.ready)
   when(io.wr_input.ready){
     input_en(io.wr_input.bits.id):=true.B
   }
@@ -428,9 +428,25 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
     RegInit(VecInit(Seq.fill(slot_num * slot_size)(0.U(width.W))))
     //SyncReadMem(slot_num * slot_size, UInt(width.W))
   }
+
+  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
+  val out_addr = RegInit(0.U(10.W))
+  val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  val read_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  val update_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
+  val update_valid2 = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
+  val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+  val write_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+  val in_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
+  val update_slot = RegInit(VecInit(Seq.fill(out_channel*2)(0.U(10.W))))
+
+  val output_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
+  val output_id = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
+
+
   //val buf_reg = RegInit(VecInit(Seq.fill(out_channel * slot_size)(0.U(width.W))))
 
-  printf("Output Buf Data\n")
+  printf("Output Buf Data, out_addr=%d\n", out_addr)
   for(i <- 0 until 8){
     for(j <- 0 until 12){
       printf("%d ",buf_reg(i)(j.asUInt))
@@ -440,20 +456,15 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   
   printf("\n")
 
-  val in_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))  //每行中的写地址
-  val out_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W)))) 
-  val update_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
-  val read_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
-  val update_valid = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
-  val update_valid2 = RegInit(VecInit(Seq.fill(out_channel)(false.B)))
-  val output_valid = RegInit(false.B)
-  val update_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
-  val write_addr = RegInit(VecInit(Seq.fill(out_channel)(0.U(10.W))))
-  val in_data = RegInit(VecInit(Seq.fill(out_channel)(0.U(width.W))))
-  val update_slot = RegInit(VecInit(Seq.fill(out_channel*2)(0.U(10.W))))
-
+  
   io.in_inst.ready := true.B
-  output_valid := io.out_inst.valid
+  output_valid(0) := io.out_inst.valid
+  output_id(0) := io.out_inst.bits.id
+  // out_inst传进来的时候，其实还没算完，等out_channel个cycle算完了再开始输出
+  for(i <- 1 until out_channel){
+    output_valid(i) := output_valid(i-1)
+    output_id(i) := output_id(i-1)
+  }
   update_slot(0) := io.in_inst.bits.id 
   for(i <- 1 until out_channel*2){
     update_slot(i) := update_slot(i-1)
@@ -471,6 +482,8 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
     update_valid2(i) := update_valid(i)
     when(io.data_in(i).valid){
       in_addr(i) := (in_addr(i) + 1.U) % (io.config.out_w)
+    }
+    when(update_valid(i)){
       update_data(i) := read_data(i) + in_data(i)
     }
     when(update_valid2(i)){
@@ -482,12 +495,12 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   // buffer to MEM
 
   for(i <- 0 until out_channel){
-    io.data_out.bits(i) := buf_reg(i)(io.out_inst.bits.id * slot_size.asUInt + out_addr(i))
-    out_addr(i) := (out_addr(i) + io.out_inst.valid)%(io.config.out_w)
+    io.data_out.bits(i) := buf_reg(i)(output_id(out_channel-1) * slot_size.asUInt + out_addr)
+    out_addr := (out_addr + output_valid(out_channel-1))%(io.config.out_w)
     //io.data_out.bits(i).valid := io.out_inst.valid
   }
-  io.data_out.valid := io.out_inst.valid
-  io.out_inst.ready := (out_addr(0)===io.config.out_w - 1.U)
+  io.data_out.valid := output_valid(out_channel-1)
+  io.out_inst.ready := (out_addr===io.config.out_w - 1.U)
 }
 // output contains multiple tiles, each tile k(s)*h(x)
 // result buffer has three dim: k * h * w

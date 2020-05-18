@@ -229,6 +229,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   val c_output = Module(new Update_Result(out_channel, in_slot_num, max_w, out_channel, batch*width))
   // 一开始的in_channel个cycle，输入filter到PE中，接下来的ks*ks*out_w个cycle用于计算。
   printf("a.inputready=%d, b.inputready=%d\n",io.a_in.ready, io.b_in.ready)
+  printf("a.inputvalid=%d, b.inputvalid=%d\n",io.a_in.valid, io.b_in.valid)
   printf("total cycle=%d, exec_cycle=%d, ks=%d, w=%d, conv_exec.valid=%d\n", total_cycle, exec_cycle, ids.config.ks, ids.config.out_w, ids.conv_exec.valid)
   printf("kernel buffer to PE\n")
   for(i <- 0 until cycle_read_kernel){
