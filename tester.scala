@@ -147,13 +147,13 @@ class TestInst(c: WSSystolic_Test) extends PeekPokeTester(c){
     if(peek(c.io.b_in.ready).intValue==1){
       for(k <- 0 until cycle_read_input){
         // h c w
-        poke(c.io.b_in.bits(k),mat_pad(idx_input/14)(k)(idx_input%14))
+        poke(c.io.b_in.bits(k),1)
       }
       idx_input=idx_input+1
     }
     if(peek(c.io.a_in.ready).intValue==1){
       for(k <- 0 until cycle_read_kernel){
-        poke(c.io.a_in.bits(k),mat_fil(k)(idx_filter%8)(idx_filter/8))
+        poke(c.io.a_in.bits(k),idx_filter/8+1)
       }
       idx_filter = idx_filter + 1
     }
@@ -409,8 +409,10 @@ class TestInst(c: WSSystolic_Test) extends PeekPokeTester(c){
 // }
 //Systolic_Rect(s: Int, x: Int, max_input_w: Int, max_input_h: Int, max_c: Int, max_ks: Int, cycle_read_input: Int, cycle_read_kernel: Int, cycle_out_res: Int, m: Int, n: Int, width: Int)
 object Test2 extends App {
-  //Driver(() => new WSSystolic_Test(in_channel=8, out_channel=8, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=8, cycle_read_input=8, cycle_out_res=8, max_ks=4, max_w=32, batch=16, width=8))(c => new TestInst(c))
-  chisel3.Driver.execute(args, () => new WSSystolic_Test(in_channel=8, out_channel=8, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=8, cycle_read_input=8, cycle_out_res=8, max_ks=4, max_w=32, batch=16, width=8) )
+  Driver(() => new WSSystolic_Test(in_channel=8, out_channel=8, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=8, cycle_read_input=8, cycle_out_res=8, max_ks=4, max_w=32, batch=16, width=16))(c => new TestInst(c))
+  //chisel3.Driver.execute(args, () => new WSSystolic_Test(in_channel=4, out_channel=4, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=4, cycle_read_input=4, cycle_out_res=4, max_ks=4, max_w=32, batch=16, width=16) )
+
+  //chisel3.Driver.execute(args, () => new WSSystolic_Test(in_channel=4, out_channel=4, in_slot_num=16, ker_slot_num=16, cycle_read_kernel=4, cycle_read_input=4, cycle_out_res=4, max_ks=4, max_w=32, batch=16, width=16) )
   //Driver(() => new Systolic_Rect(s=8,x=8,max_input_w=16, max_input_h=16, max_c=4, max_ks=5, cycle_read_input=4, cycle_read_kernel=9, cycle_out_res=4, m=1, n=1, width=8))(c => new TestInst(c))
   //Driver(() => new Systolic_Rect(4, 4, 16, 4, 4, 1, 1, 16))(c => new Test_Res1(c))
   //Driver(() => new DFSysIn_Input(16, 256, 64, 5, 2, 8))(c => new Test_Input(c))

@@ -6,29 +6,41 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.log10
 import chisel3.util._
 import chisel3.experimental._
-class ram_sdp_1024x256 extends BlackBox{
+class ram_sdp_1024x256 extends Module{
   val io = IO(new Bundle(){
-    val wr_clk = Input(Clock())
-    val wr_en = Input(UInt(1.W))
+    // val wr_clk = Input(Clock())
+    // val rd_clk = Input(Clock())
+    val wr_en = Input(Bool())
     val wr_addr = Input(UInt(10.W))
     val wr_data = Input(UInt(256.W))
-    val rd_clk = Input(Clock())
-    val rd_en = Input(UInt(1.W))
+    
+    val rd_en = Input(Bool())
     val rd_addr = Input(UInt(10.W))
     val rd_data = Output(UInt(256.W))
   })
+  val buf = SyncReadMem(1024, UInt(256.W))
+  when(io.wr_en){
+    buf.write(io.wr_addr, io.wr_data)
+  }
+  io.rd_data := buf.read(io.rd_addr)
 }
-class ram_sdp_1024x16 extends BlackBox{
+class ram_sdp_1024x16 extends Module{
   val io = IO(new Bundle(){
-    val wr_clk = Input(Clock())
-    val wr_en = Input(UInt(1.W))
+    // val wr_clk = Input(Clock())
+    // val rd_clk = Input(Clock())
+    val wr_en = Input(Bool())
     val wr_addr = Input(UInt(10.W))
     val wr_data = Input(UInt(16.W))
-    val rd_clk = Input(Clock())
+    
     val rd_en = Input(UInt(1.W))
     val rd_addr = Input(UInt(10.W))
     val rd_data = Output(UInt(16.W))
   })
+  val buf = SyncReadMem(1024, UInt(16.W))
+  when(io.wr_en){
+    buf.write(io.wr_addr, io.wr_data)
+  }
+  io.rd_data := buf.read(io.rd_addr)
 }
 class ConvConfig extends Bundle{
   val in_w = UInt(10.W)
@@ -73,7 +85,7 @@ class InstDispatcher extends Module{
   })
   val config_ks =   RegInit(0.U(10.W))
   val config_pad =  RegInit(0.U(10.W))
-  val config_out_w =  RegInit(0.U(10.W))
+  val config_out_w =  RegInit(1.U(10.W))
   val wr_input_q =  Module(new Queue(new BufIDInst(), 10)).io
   val wr_filter_q = Module(new Queue(new BufIDInst(), 10)).io
   val conv_q =  Module(new Queue(new ConvInst(), 10)).io
@@ -527,11 +539,11 @@ class Update_Result(out_channel: Int, slot_num: Int, slot_size: Int, cycle_write
   // buffer to MEM
 
   for(i <- 0 until out_channel){
-    io.data_out.bits(i) := buf_reg(i)(output_id(out_channel-1) * slot_size.asUInt + out_addr)
-    out_addr := (out_addr + output_valid(out_channel-1))%(io.config.out_w)
+    io.data_out.bits(i) := buf_reg(i)(io.out_inst.bits.id * slot_size.asUInt + out_addr)
+    out_addr := (out_addr + io.out_inst.valid)%(io.config.out_w)
     //io.data_out.bits(i).valid := io.out_inst.valid
   }
-  io.data_out.valid := output_valid(out_channel-1)
+  io.data_out.valid := io.out_inst.valid
   io.out_inst.ready := (out_addr===io.config.out_w - 1.U)
 }
 // output contains multiple tiles, each tile k(s)*h(x)

@@ -1997,22 +1997,6 @@ module DynamicPE_Batch(
   wire  pe_15_io_sgn; // @[bitfusion8.scala 331:11]
   wire [127:0] pe_15_io_statC_in; // @[bitfusion8.scala 331:11]
   wire [127:0] pe_15_io_statC_out; // @[bitfusion8.scala 331:11]
-  wire  _T; // @[bitfusion8.scala 337:39]
-  wire  _T_1; // @[bitfusion8.scala 337:39]
-  wire  _T_2; // @[bitfusion8.scala 337:39]
-  wire  _T_3; // @[bitfusion8.scala 337:39]
-  wire  _T_4; // @[bitfusion8.scala 337:39]
-  wire  _T_5; // @[bitfusion8.scala 337:39]
-  wire  _T_6; // @[bitfusion8.scala 337:39]
-  wire  _T_7; // @[bitfusion8.scala 337:39]
-  wire  _T_8; // @[bitfusion8.scala 337:39]
-  wire  _T_9; // @[bitfusion8.scala 337:39]
-  wire  _T_10; // @[bitfusion8.scala 337:39]
-  wire  _T_11; // @[bitfusion8.scala 337:39]
-  wire  _T_12; // @[bitfusion8.scala 337:39]
-  wire  _T_13; // @[bitfusion8.scala 337:39]
-  wire  _T_14; // @[bitfusion8.scala 337:39]
-  wire  _T_15; // @[bitfusion8.scala 337:39]
   DynamicPE_WS pe_0 ( // @[bitfusion8.scala 331:11]
     .clock(pe_0_clock),
     .reset(pe_0_reset),
@@ -2173,22 +2157,6 @@ module DynamicPE_Batch(
     .io_statC_in(pe_15_io_statC_in),
     .io_statC_out(pe_15_io_statC_out)
   );
-  assign _T = io_in_column[0]; // @[bitfusion8.scala 337:39]
-  assign _T_1 = io_in_column[1]; // @[bitfusion8.scala 337:39]
-  assign _T_2 = io_in_column[2]; // @[bitfusion8.scala 337:39]
-  assign _T_3 = io_in_column[3]; // @[bitfusion8.scala 337:39]
-  assign _T_4 = io_in_column[4]; // @[bitfusion8.scala 337:39]
-  assign _T_5 = io_in_column[5]; // @[bitfusion8.scala 337:39]
-  assign _T_6 = io_in_column[6]; // @[bitfusion8.scala 337:39]
-  assign _T_7 = io_in_column[7]; // @[bitfusion8.scala 337:39]
-  assign _T_8 = io_in_column[8]; // @[bitfusion8.scala 337:39]
-  assign _T_9 = io_in_column[9]; // @[bitfusion8.scala 337:39]
-  assign _T_10 = io_in_column[10]; // @[bitfusion8.scala 337:39]
-  assign _T_11 = io_in_column[11]; // @[bitfusion8.scala 337:39]
-  assign _T_12 = io_in_column[12]; // @[bitfusion8.scala 337:39]
-  assign _T_13 = io_in_column[13]; // @[bitfusion8.scala 337:39]
-  assign _T_14 = io_in_column[14]; // @[bitfusion8.scala 337:39]
-  assign _T_15 = io_in_column[15]; // @[bitfusion8.scala 337:39]
   assign io_statC_out_0 = pe_0_io_statC_out; // @[bitfusion8.scala 339:21]
   assign io_statC_out_1 = pe_1_io_statC_out; // @[bitfusion8.scala 339:21]
   assign io_statC_out_2 = pe_2_io_statC_out; // @[bitfusion8.scala 339:21]
@@ -2209,112 +2177,112 @@ module DynamicPE_Batch(
   assign pe_0_reset = reset;
   assign pe_0_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_0_io_in_row = io_in_row_0; // @[bitfusion8.scala 336:21]
-  assign pe_0_io_in_column = {{15'd0}, _T}; // @[bitfusion8.scala 337:24]
+  assign pe_0_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_0_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_0_io_statC_in = io_statC_in_0; // @[bitfusion8.scala 338:23]
   assign pe_1_clock = clock;
   assign pe_1_reset = reset;
   assign pe_1_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_1_io_in_row = io_in_row_1; // @[bitfusion8.scala 336:21]
-  assign pe_1_io_in_column = {{15'd0}, _T_1}; // @[bitfusion8.scala 337:24]
+  assign pe_1_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_1_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_1_io_statC_in = io_statC_in_1; // @[bitfusion8.scala 338:23]
   assign pe_2_clock = clock;
   assign pe_2_reset = reset;
   assign pe_2_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_2_io_in_row = io_in_row_2; // @[bitfusion8.scala 336:21]
-  assign pe_2_io_in_column = {{15'd0}, _T_2}; // @[bitfusion8.scala 337:24]
+  assign pe_2_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_2_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_2_io_statC_in = io_statC_in_2; // @[bitfusion8.scala 338:23]
   assign pe_3_clock = clock;
   assign pe_3_reset = reset;
   assign pe_3_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_3_io_in_row = io_in_row_3; // @[bitfusion8.scala 336:21]
-  assign pe_3_io_in_column = {{15'd0}, _T_3}; // @[bitfusion8.scala 337:24]
+  assign pe_3_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_3_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_3_io_statC_in = io_statC_in_3; // @[bitfusion8.scala 338:23]
   assign pe_4_clock = clock;
   assign pe_4_reset = reset;
   assign pe_4_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_4_io_in_row = io_in_row_4; // @[bitfusion8.scala 336:21]
-  assign pe_4_io_in_column = {{15'd0}, _T_4}; // @[bitfusion8.scala 337:24]
+  assign pe_4_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_4_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_4_io_statC_in = io_statC_in_4; // @[bitfusion8.scala 338:23]
   assign pe_5_clock = clock;
   assign pe_5_reset = reset;
   assign pe_5_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_5_io_in_row = io_in_row_5; // @[bitfusion8.scala 336:21]
-  assign pe_5_io_in_column = {{15'd0}, _T_5}; // @[bitfusion8.scala 337:24]
+  assign pe_5_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_5_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_5_io_statC_in = io_statC_in_5; // @[bitfusion8.scala 338:23]
   assign pe_6_clock = clock;
   assign pe_6_reset = reset;
   assign pe_6_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_6_io_in_row = io_in_row_6; // @[bitfusion8.scala 336:21]
-  assign pe_6_io_in_column = {{15'd0}, _T_6}; // @[bitfusion8.scala 337:24]
+  assign pe_6_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_6_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_6_io_statC_in = io_statC_in_6; // @[bitfusion8.scala 338:23]
   assign pe_7_clock = clock;
   assign pe_7_reset = reset;
   assign pe_7_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_7_io_in_row = io_in_row_7; // @[bitfusion8.scala 336:21]
-  assign pe_7_io_in_column = {{15'd0}, _T_7}; // @[bitfusion8.scala 337:24]
+  assign pe_7_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_7_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_7_io_statC_in = io_statC_in_7; // @[bitfusion8.scala 338:23]
   assign pe_8_clock = clock;
   assign pe_8_reset = reset;
   assign pe_8_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_8_io_in_row = io_in_row_8; // @[bitfusion8.scala 336:21]
-  assign pe_8_io_in_column = {{15'd0}, _T_8}; // @[bitfusion8.scala 337:24]
+  assign pe_8_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_8_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_8_io_statC_in = io_statC_in_8; // @[bitfusion8.scala 338:23]
   assign pe_9_clock = clock;
   assign pe_9_reset = reset;
   assign pe_9_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_9_io_in_row = io_in_row_9; // @[bitfusion8.scala 336:21]
-  assign pe_9_io_in_column = {{15'd0}, _T_9}; // @[bitfusion8.scala 337:24]
+  assign pe_9_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_9_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_9_io_statC_in = io_statC_in_9; // @[bitfusion8.scala 338:23]
   assign pe_10_clock = clock;
   assign pe_10_reset = reset;
   assign pe_10_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_10_io_in_row = io_in_row_10; // @[bitfusion8.scala 336:21]
-  assign pe_10_io_in_column = {{15'd0}, _T_10}; // @[bitfusion8.scala 337:24]
+  assign pe_10_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_10_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_10_io_statC_in = io_statC_in_10; // @[bitfusion8.scala 338:23]
   assign pe_11_clock = clock;
   assign pe_11_reset = reset;
   assign pe_11_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_11_io_in_row = io_in_row_11; // @[bitfusion8.scala 336:21]
-  assign pe_11_io_in_column = {{15'd0}, _T_11}; // @[bitfusion8.scala 337:24]
+  assign pe_11_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_11_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_11_io_statC_in = io_statC_in_11; // @[bitfusion8.scala 338:23]
   assign pe_12_clock = clock;
   assign pe_12_reset = reset;
   assign pe_12_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_12_io_in_row = io_in_row_12; // @[bitfusion8.scala 336:21]
-  assign pe_12_io_in_column = {{15'd0}, _T_12}; // @[bitfusion8.scala 337:24]
+  assign pe_12_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_12_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_12_io_statC_in = io_statC_in_12; // @[bitfusion8.scala 338:23]
   assign pe_13_clock = clock;
   assign pe_13_reset = reset;
   assign pe_13_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_13_io_in_row = io_in_row_13; // @[bitfusion8.scala 336:21]
-  assign pe_13_io_in_column = {{15'd0}, _T_13}; // @[bitfusion8.scala 337:24]
+  assign pe_13_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_13_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_13_io_statC_in = io_statC_in_13; // @[bitfusion8.scala 338:23]
   assign pe_14_clock = clock;
   assign pe_14_reset = reset;
   assign pe_14_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_14_io_in_row = io_in_row_14; // @[bitfusion8.scala 336:21]
-  assign pe_14_io_in_column = {{15'd0}, _T_14}; // @[bitfusion8.scala 337:24]
+  assign pe_14_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_14_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_14_io_statC_in = io_statC_in_14; // @[bitfusion8.scala 338:23]
   assign pe_15_clock = clock;
   assign pe_15_reset = reset;
   assign pe_15_io_ctrl = io_ctrl; // @[bitfusion8.scala 334:19]
   assign pe_15_io_in_row = io_in_row_15; // @[bitfusion8.scala 336:21]
-  assign pe_15_io_in_column = {{15'd0}, _T_15}; // @[bitfusion8.scala 337:24]
+  assign pe_15_io_in_column = io_in_column; // @[bitfusion8.scala 337:24]
   assign pe_15_io_sgn = io_sgn; // @[bitfusion8.scala 335:18]
   assign pe_15_io_statC_in = io_statC_in_15; // @[bitfusion8.scala 338:23]
 endmodule

@@ -223,28 +223,35 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   val in_b_valid = RegInit(VecInit(Seq.fill(in_channel)(false.B)))
   val total_cycle = RegInit(1000.U(10.W))
   val exec_cycle = RegInit(0.U(10.W))
+  val exec_fin = RegInit(VecInit(Seq.fill(out_channel+1)(false.B)))
   val ids = Module(new InstDispatcher()).io
   val a_input = Module(new WSSysIn_Kernel(in_channel, out_channel, ker_slot_num, max_ks * max_ks * in_channel, in_channel, width))
   val b_input = Module(new WSSysIn_Input(in_channel, in_slot_num, max_w, cycle_read_input, batch * width))
   val c_output = Module(new Update_Result(out_channel, in_slot_num, max_w, out_channel, batch*width))
+
+  // 控制conv_exec指令的完成，在最后一行PE开始输出结果之后
+  exec_fin(0):= (exec_cycle===total_cycle-1.U)
+  for(i <- 1 until out_channel){
+    exec_fin(i) := exec_fin(i-1)
+  }
   // 一开始的in_channel个cycle，输入filter到PE中，接下来的ks*ks*out_w个cycle用于计算。
-  printf("a.inputready=%d, b.inputready=%d\n",io.a_in.ready, io.b_in.ready)
-  printf("a.inputvalid=%d, b.inputvalid=%d\n",io.a_in.valid, io.b_in.valid)
-  printf("total cycle=%d, exec_cycle=%d, ks=%d, w=%d, conv_exec.valid=%d\n", total_cycle, exec_cycle, ids.config.ks, ids.config.out_w, ids.conv_exec.valid)
-  printf("kernel buffer to PE\n")
-  for(i <- 0 until cycle_read_kernel){
-    printf("(%d, %d)",a_input.io.data_out.bits(i).bits,a_input.io.data_out.bits(i).valid)
-  }
-  printf("\n")
-  printf("input buffer to PE\n")
-  for(i <- 0 until cycle_read_input){
-    printf("(%d, %d)",b_input.io.data_out.bits(i).bits,b_input.io.data_out.bits(i).valid)
-  }
-  printf("PE to output buffer\n")
-  for(i <- 0 until cycle_read_input){
-    printf("(%d, %d)",c_output.io.data_in(i).bits,c_output.io.data_in(i).valid)
-  }
-  printf("\n")
+  // printf("a.inputready=%d, b.inputready=%d\n",io.a_in.ready, io.b_in.ready)
+  // printf("a.inputvalid=%d, b.inputvalid=%d\n",io.a_in.valid, io.b_in.valid)
+  // printf("total cycle=%d, exec_cycle=%d, ks=%d, w=%d, conv_exec.valid=%d\n", total_cycle, exec_cycle, ids.config.ks, ids.config.out_w, ids.conv_exec.valid)
+  // printf("kernel buffer to PE\n")
+  // for(i <- 0 until cycle_read_kernel){
+  //   printf("(%d, %d)",a_input.io.data_out.bits(i).bits,a_input.io.data_out.bits(i).valid)
+  // }
+  // printf("\n")
+  // printf("input buffer to PE\n")
+  // for(i <- 0 until cycle_read_input){
+  //   printf("(%d, %d)",b_input.io.data_out.bits(i).bits,b_input.io.data_out.bits(i).valid)
+  // }
+  // printf("PE to output buffer\n")
+  // for(i <- 0 until cycle_read_input){
+  //   printf("(%d, %d)",c_output.io.data_in(i).bits,c_output.io.data_in(i).valid)
+  // }
+  // printf("\n")
   total_cycle := ids.config.ks * ids.config.ks * ids.config.out_w + in_channel.asUInt
   ids.inst <> io.inst
 
@@ -269,7 +276,7 @@ class WSSystolic_Test(in_channel: Int, out_channel: Int, in_slot_num: Int, ker_s
   c_output.io.in_inst.valid := ids.conv_exec.valid
   c_output.io.out_inst <> ids.rd_output
   io.c_out.valid := c_output.io.data_out.valid
-  ids.conv_exec.ready := (exec_cycle===total_cycle-1.U) //最后一个cycle，conv指令结束，ready置为真，允许下一条指令进来
+  ids.conv_exec.ready := exec_fin(out_channel-1) //最后一个cycle，conv指令结束，ready置为真，允许下一条指令进来
   io.a_in.ready := a_input.io.data_in.ready
   io.b_in.ready := b_input.io.data_in.ready
   // filter的输入：每out_w个cycle，前in_channel个cycle输入，共输入ks*ks次
